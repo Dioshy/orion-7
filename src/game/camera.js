@@ -19,6 +19,11 @@ function setBody(v) {
   for (const ch of player.obj.children) if (!ch.isLight && !(ch.isObject3D && ch.children.some(x => x.isLight) && !ch.isMesh)) ch.visible = v;
 }
 export function resetCamera() { camQ.copy(player.obj.quaternion); lag.set(0, 0, 0); push = 0; }
+/* Intro de décollage : la caméra part devant l'entrée du hangar, survole le vaisseau dans le hangar
+   (couloir dégagé, jamais à travers la coque) puis se place derrière lui. */
+const intro = { t: 1, dur: 3.2, p0: new THREE.Vector3(9, -8, 165), p1: new THREE.Vector3(14, -9, 66) };
+const _ip = new THREE.Vector3(), _it = new THREE.Vector3(), _inq = new THREE.Quaternion(), _cq = new THREE.Quaternion();
+export function startIntro(dur = 3.2) { intro.t = 0; intro.dur = dur; blend.t = 1; }
 /* Transition : on part de la pose actuelle de la caméra et on rejoint la nouvelle en douceur. */
 const blend = { t: 1, dur: 1, pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: 70 };
 export function cameraTransition(dur = 1.4) {
@@ -62,7 +67,7 @@ export function updateCamera(rdt, dt) {
       cam.quaternion.copy(p.obj.quaternion).multiply(headQ);
     }
     p.obj.visible = p.alive;
-    setBody(G.camMode === 'chase');
+    setBody(G.camMode === 'chase' || intro.t < 1);
     fov += (G.camMode === 'cockpit' ? 12 : 0) + (16 * smooth(120, 720, p.vel.length()) + (p.boosting ? 5 : 0) + (G.fovKick || 0)) * (G.camMode === 'cockpit' ? 0.5 : 1);
     if (dt > 0) { G.fovKick = damp(G.fovKick || 0, 0, 5, dt); G.recoil = damp(G.recoil || 0, 0, 14, dt); }
     const rum = (p.boosting ? 0.07 : 0) + 0.05 * smooth(400, 720, p.vel.length()) + (st === 'launch' ? 0.04 * smooth(5, 70, p.vel.length()) : 0);
@@ -80,6 +85,16 @@ export function updateCamera(rdt, dt) {
     _w.set(0, 0, 0); cam.lookAt(_w); fov = 55;
   }
   cam.fov = damp(cam.fov, fov, 3, rdt || 0.016);
+  if (intro.t < 1 && (st === 'launch' || st === 'flight')) {
+    intro.t = Math.min(1, intro.t + (rdt || 0.016) / intro.dur);
+    const k = intro.t < 0.5 ? 2 * intro.t * intro.t : 1 - Math.pow(-2 * intro.t + 2, 2) / 2; // accélère puis ralentit
+    const u = 1 - k;
+    _ip.copy(intro.p0).multiplyScalar(u * u).addScaledVector(intro.p1, 2 * u * k).addScaledVector(cam.position, k * k);
+    _cq.copy(cam.quaternion);
+    _it.copy(p.pos).add(_v.set(0, 1, 0)); cam.position.copy(_ip); cam.lookAt(_it); _inq.copy(cam.quaternion);
+    cam.quaternion.slerpQuaternions(_inq, _cq, smooth(0.7, 1, k));
+    cam.fov = fov - 14 * (1 - k);
+  }
   if (blend.t < 1) {
     blend.t = Math.min(1, blend.t + (rdt || 0.016) / blend.dur);
     const k = 1 - Math.pow(1 - blend.t, 3); // sortie douce
@@ -87,7 +102,7 @@ export function updateCamera(rdt, dt) {
     cam.fov = blend.fov + (cam.fov - blend.fov) * k;
   }
   cam.updateProjectionMatrix();
-  const ck = G.camMode === 'cockpit' && (st === 'flight' || st === 'launch') && p.alive;
+  const ck = G.camMode === 'cockpit' && (st === 'flight' || st === 'launch') && p.alive && intro.t >= 1;
   updateCockpit(ck, head, headQ, cam.fov, p.inp);
   if (G.shake > 0.01 && dt > 0) {
     randUnit(_v).multiplyScalar(G.shake * (ck ? 0.15 : 1)); cam.position.add(_v);

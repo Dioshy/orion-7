@@ -69,8 +69,8 @@ export function drawHUD() {
   if (flying && p.alive) drawSpeedLines(p);
   const boot = G.hudBoot ?? 1;
   if (boot < 1) {
-    c.globalAlpha = Math.min(1, boot * 1.6) * (boot < 0.5 && Math.random() < 0.3 ? 0.3 : 1);
-    if (boot < 0.8) { c.save(); c.globalAlpha = 1; c.textAlign = 'center'; c.font = `600 12px ${FONT_M}`; c.fillStyle = COL.friend;
+    c.globalAlpha = Math.max(0, Math.min(1, boot * 1.6)) * (boot > 0 && boot < 0.5 && Math.random() < 0.3 ? 0.3 : 1);
+    if (boot > 0 && boot < 0.8) { c.save(); c.globalAlpha = 1; c.textAlign = 'center'; c.font = `600 12px ${FONT_M}`; c.fillStyle = COL.friend;
       c.fillText(boot < 0.35 ? 'INITIALISATION DU HUD…' : boot < 0.6 ? 'CAPTEURS · RADAR · ARMEMENT' : 'SYSTÈMES EN LIGNE', W / 2, H * 0.6); c.restore(); }
   }
   if (flying && p.alive) {
@@ -130,7 +130,7 @@ export function drawHUD() {
   }
   c.globalAlpha = 1;
   drawPopups();
-  if (st === 'launch') drawLaunch(p);
+  if (st === 'launch' && boot > 0.25) drawLaunch(p);
   if (st === 'dead') {
     c.textAlign = 'center'; c.fillStyle = COL.red; c.font = `700 ${Math.min(48, W * 0.07)}px ${FONT_D}`; c.fillText('VAISSEAU DÉTRUIT', W / 2, H * 0.4);
     c.font = `600 13px ${FONT_M}`; c.fillStyle = COL.hud; c.fillText(player.lives > 0 ? `Vaisseau de réserve dans ${Math.max(0, Math.ceil(G.deadT))} s` : '', W / 2, H * 0.4 + 30);

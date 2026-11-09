@@ -53,9 +53,9 @@ export class GodRaysPass extends Pass {
     super();
     this.rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.raysMat = new THREE.ShaderMaterial({
-      uniforms: { tDiffuse: { value: null }, sunPos: { value: new THREE.Vector2(0.5, 0.5) }, threshold: { value: 1.2 }, decay: { value: 0.945 }, density: { value: 0.85 }, dither: { value: 1 } },
+      uniforms: { tDiffuse: { value: null }, sunPos: { value: new THREE.Vector2(0.5, 0.5) }, threshold: { value: 1.2 }, decay: { value: 0.945 }, density: { value: 0.85 }, dither: { value: 1 }, aspect: { value: 1.6 } },
       vertexShader: VS,
-      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 sunPos; uniform float threshold; uniform float decay; uniform float density; uniform float dither; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 sunPos; uniform float threshold; uniform float decay; uniform float density; uniform float dither; uniform float aspect; varying vec2 vUv;
         #define N 30
         void main(){
           vec2 delta = (vUv - sunPos) * density / float(N);
@@ -64,7 +64,10 @@ export class GodRaysPass extends Pass {
           for (int i = 0; i < N; i++) {
             uv -= delta;
             vec3 s = texture2D(tDiffuse, clamp(uv, 0.0, 1.0)).rgb;
-            acc += s * min(max(dot(s, vec3(0.299, 0.587, 0.114)) - threshold, 0.0), 4.0) * illum;
+            // seule la lumière proche du soleil à l'écran émet des rayons (pas les balises, feux, explosions lointaines)
+            vec2 dd = (uv - sunPos) * vec2(aspect, 1.0);
+            float src = exp(-dot(dd, dd) * 38.0);
+            acc += s * min(max(dot(s, vec3(0.299, 0.587, 0.114)) - threshold, 0.0), 4.0) * illum * src;
             illum *= decay;
           }
           gl_FragColor = vec4(acc / float(N), 1.0);
@@ -74,13 +77,13 @@ export class GodRaysPass extends Pass {
     this.compMat = new THREE.ShaderMaterial({
       uniforms: { tDiffuse: { value: null }, tRays: { value: null }, strength: { value: 0 } },
       vertexShader: VS,
-      fragmentShader: 'uniform sampler2D tDiffuse; uniform sampler2D tRays; uniform float strength; varying vec2 vUv; void main(){ vec4 b = texture2D(tDiffuse, vUv); gl_FragColor = vec4(b.rgb + texture2D(tRays, vUv).rgb * strength * 1.6, b.a); }',
+      fragmentShader: 'uniform sampler2D tDiffuse; uniform sampler2D tRays; uniform float strength; varying vec2 vUv; void main(){ vec4 b = texture2D(tDiffuse, vUv); gl_FragColor = vec4(b.rgb + texture2D(tRays, vUv).rgb * strength * 2.2, b.a); }',
       depthTest: false, depthWrite: false,
     });
     this.quad = new FullScreenQuad(null);
     this.uniforms = { sunPos: this.raysMat.uniforms.sunPos, strength: this.compMat.uniforms.strength };
   }
-  setSize(w, h) { this.w = w; this.h = h; this.applyScale(); }
+  setSize(w, h) { this.w = w; this.h = h; this.raysMat.uniforms.aspect.value = w / Math.max(1, h); this.applyScale(); }
   /** Pleine résolution avec tramage fin, ou demi-résolution sans tramage (lisse) si la machine peine. */
   setScale(s) { if (s !== this.scale) { this.scale = s; this.applyScale(); } }
   applyScale() { const s = this.scale || 1; this.raysMat.uniforms.dither.value = s >= 1 ? 1 : 0; this.rt.setSize(Math.max(1, Math.round((this.w || 1) * s)), Math.max(1, Math.round((this.h || 1) * s))); }
