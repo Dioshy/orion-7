@@ -62,144 +62,181 @@ function flameMesh(colA, colB, radius) {
   const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; return mesh;
 }
 
-/* Jambe de train : pivot en haut, vérin, patin d'atterrissage, feu. */
-function gearLeg(len, padR) {
+/* ---------- Profil du fuselage : toutes les pièces s'y accrochent ---------- */
+const PROFILE = [[0, 8.8], [0.28, 8.0], [0.6, 6.6], [0.95, 4.6], [1.2, 2.4], [1.34, 0], [1.4, -2.2], [1.32, -4.4], [1.08, -5.6]];
+const SX = 1.15, SY = 0.8;
+/** Rayon du profil à la position z du vaisseau (avant = -z). */
+function rAt(z) {
+  const y = -z;
+  for (let i = 0; i < PROFILE.length - 1; i++) {
+    const [r0, y0] = PROFILE[i], [r1, y1] = PROFILE[i + 1];
+    if (y <= y0 && y >= y1) return r0 + (r1 - r0) * (y0 - y) / (y0 - y1);
+  }
+  return 0;
+}
+const topAt = z => rAt(z) * SY, botAt = z => -rAt(z) * SY, halfW = z => rAt(z) * SX;
+
+/* ---------- Train d'atterrissage ---------- */
+// Jambe : pivot en haut (dans la soute), fût, vérin chromé, compas, contrefiche, patin articulé, feu.
+function gearLeg(len, padR, braceDir) {
   const pivot = new THREE.Group();
-  const strut = new THREE.Mesh(Cyl(0.15, 0.15, len * 0.62, 10), MAT.hullDark); strut.position.y = -len * 0.31; pivot.add(strut);
-  const piston = new THREE.Mesh(Cyl(0.1, 0.1, len * 0.5, 10), metal); piston.position.y = -len * 0.72; pivot.add(piston);
-  const collar = new THREE.Mesh(Cyl(0.2, 0.2, 0.18, 10), MAT.stripe); collar.position.y = -len * 0.6; pivot.add(collar);
-  const brace = new THREE.Mesh(Box(0.07, len * 0.7, 0.07), MAT.hullDark); brace.position.set(0, -len * 0.4, 0.35); brace.rotation.x = -0.35; pivot.add(brace);
+  const hinge = new THREE.Mesh(Cyl(0.14, 0.14, 0.34, 12), SH.dark); hinge.rotation.z = HALF; pivot.add(hinge);
+  const strut = new THREE.Mesh(Cyl(0.13, 0.15, len * 0.58, 12), SH.dark); strut.position.y = -len * 0.29; pivot.add(strut);
+  const collar = new THREE.Mesh(Cyl(0.18, 0.18, 0.12, 12), SH.accent); collar.position.y = -len * 0.56; pivot.add(collar);
+  const piston = new THREE.Mesh(Cyl(0.085, 0.085, len * 0.42, 12), metal); piston.position.y = -len * 0.76; pivot.add(piston);
+  // compas (deux bielles en V)
+  for (const [y, rx] of [[-len * 0.58, 0.7], [-len * 0.76, -0.7]]) { const l = new THREE.Mesh(Box(0.05, len * 0.2, 0.05), metal); l.position.set(0, y, 0.12); l.rotation.x = rx; pivot.add(l); }
+  // contrefiche vers la structure
+  const bl = Math.hypot(len * 0.45, 0.75), brace = new THREE.Mesh(Box(0.06, bl, 0.06), SH.dark);
+  brace.position.set(0, -len * 0.225, braceDir * 0.375); brace.rotation.x = braceDir * Math.atan2(0.75, len * 0.45); pivot.add(brace);
+  // patin
   const foot = new THREE.Group(); foot.position.y = -len;
-  foot.add(new THREE.Mesh(Cyl(padR, padR * 1.15, 0.2, 16), MAT.hullDark));
-  const tread = new THREE.Mesh(Cyl(padR * 1.1, padR * 1.1, 0.06, 16), blackMat); tread.position.y = -0.12; foot.add(tread);
-  const lamp = new THREE.Mesh(Box(0.18, 0.08, 0.18), glow(0xffb347, 3)); lamp.position.set(0, 0.14, padR * 0.6); foot.add(lamp);
+  foot.add(new THREE.Mesh(Sph(0.11, 10, 8), metal));
+  const pad = new THREE.Mesh(Cyl(padR, padR * 1.18, 0.16, 20), SH.dark); pad.position.y = -0.1; foot.add(pad);
+  const tread = new THREE.Mesh(Cyl(padR * 1.16, padR * 1.16, 0.05, 20), blackMat); tread.position.y = -0.2; foot.add(tread);
+  for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2, rib = new THREE.Mesh(Box(0.04, 0.1, padR * 0.9), SH.dark); rib.position.set(Math.cos(a) * padR * 0.45, -0.02, Math.sin(a) * padR * 0.45); rib.rotation.y = -a; foot.add(rib); }
+  const lamp = new THREE.Mesh(Box(0.14, 0.06, 0.06), glow(0xffb347, 2.5)); lamp.position.set(0, -0.06, -padR); foot.add(lamp);
   pivot.add(foot);
   pivot.userData = { piston, foot, len };
   return pivot;
 }
-function door(w, l) { const pivot = new THREE.Group(); const d = new THREE.Mesh(Box(w, 0.06, l), MAT.hull); d.position.x = w / 2; pivot.add(d); return pivot; }
+/* Trappe : charnière sur un bord, s'ouvre vers le bas. */
+function door(w, l) { const pivot = new THREE.Group(); const d = new THREE.Mesh(Box(w, 0.05, l), SH.hull); d.position.x = w / 2; pivot.add(d); return pivot; }
 
 function shadowsOn(o) { o.traverse(m => { if (m.isMesh && m.material && m.material.isMeshStandardMaterial) { m.castShadow = true; m.receiveShadow = true; } }); }
 
 export const GEAR_HEIGHT = 3.05; // hauteur de l'origine du vaisseau au-dessus du sol, train sorti
+const NOSE_Z = -4.7, MAIN_Z = 0.7, MAIN_X = 1.65, WING_Y = -0.3, POD_X = 5.75, POD_Z = 2.4;
 
 export function buildPlayerShip() {
   const b = new Builder();
   // fuselage
-  b.add(Lathe([[0, 8.8], [0.28, 8.0], [0.6, 6.6], [0.95, 4.6], [1.2, 2.4], [1.34, 0], [1.4, -2.2], [1.32, -4.4], [1.08, -5.6]], 24), SH.hull, 0, 0, 0, -HALF, 0, 0, 1.15, 1, 0.8);
-  b.add(Box(0.95, 0.5, 7.2), SH.dark, 0, 0.98, 1.6);
-  b.add(Box(0.32, 0.06, 7.4), SH.accent, 0, 1.25, 1.6);
-  for (const s of [-1, 1]) b.add(Box(0.95, 0.12, 5.4), SH.hull, s * 1.05, -0.12, -3.4, 0, s * 0.13, 0);
-  // lignes de panneaux
-  for (const z of [-5.8, -1.2, 2.6]) b.add(new THREE.TorusGeometry(1.3, 0.025, 4, 32), panelLine, 0, 0, z, 0, 0, 0, 1.15, 0.8, 1);
-  // verrière et armature
-  b.add(Sph(0.74, 24, 16), MAT.glass, 0, 0.8, -3.7, 0, 0, 0, 1, 0.78, 2.5);
-  for (const z of [-4.9, -3.7, -2.5]) b.add(new THREE.TorusGeometry(0.74, 0.045, 6, 24, Math.PI), SH.dark, 0, 0.66, z, 0, 0, 0, 1, 0.82, 1);
-  b.add(Box(0.07, 0.07, 3.6), SH.dark, 0, 1.38, -3.7);
-  // entrées d'air
-  for (const s of [-1, 1]) { b.add(Box(0.95, 0.95, 3.4), SH.dark, s * 1.48, -0.18, -0.5); b.add(Box(0.75, 0.75, 0.1), blackMat, s * 1.48, -0.18, -2.21); b.add(Box(0.95, 0.12, 0.6), SH.accent, s * 1.48, 0.34, -2.0); }
-  // ailes delta avec apex
-  b.add(Extrude([[-5.7, -4.4], [-5.7, -3.0], [-1.3, 1.2], [-0.9, 3.6], [0.9, 3.6], [1.3, 1.2], [5.7, -3.0], [5.7, -4.4]], 0.26), SH.hull, 0, -0.3, 0, -HALF, 0, 0);
+  b.add(Lathe(PROFILE, 32), SH.hull, 0, 0, 0, -HALF, 0, 0, SX, 1, SY);
+  // dos : épine dorsale qui prolonge la verrière jusqu'aux dérives
+  b.add(Box(0.9, 0.45, 6.4), SH.dark, 0, topAt(1.4) - 0.02, 1.4);
+  b.add(Box(0.3, 0.04, 6.5), SH.accent, 0, topAt(1.4) + 0.22, 1.4);
+  // verrière : coque vitrée encastrée dans le dessus du nez, carénage arrière
+  const canZ = -3.6, canY = topAt(canZ) - 0.2;
+  b.add(Sph(1, 32, 20), MAT.glass, 0, canY, canZ, 0, 0, 0, 0.62, 0.52, 1.75);
+  b.add(Sph(1, 24, 16), SH.dark, 0, canY - 0.05, canZ + 1.55, 0, 0, 0, 0.55, 0.42, 0.9);
+  b.add(Box(0.05, 0.05, 2.6), SH.dark, 0, canY + 0.5, canZ + 0.1, 0.06, 0, 0);       // arceau central
+  // panneau anti-reflets sur le dessus du nez, épousant la pente
+  b.add(Box(0.62, 0.03, 1.9), SH.matte, 0, topAt(-5.4) + 0.005, -5.4, Math.atan2(topAt(-4.45) - topAt(-6.35), 1.9), 0, 0);
+  // tube de Pitot et capteurs
+  b.add(Cyl(0.03, 0.03, 1.5, 8), metal, 0, 0, -9.45, -HALF, 0, 0);
+  b.add(Box(0.04, 0.38, 0.45), SH.dark, 0, topAt(3.4) + 0.42, 3.4, -0.35, 0, 0);
+  // entrées d'air latérales (le train principal se range dessous)
   for (const s of [-1, 1]) {
-    b.add(Box(3.6, 0.2, 0.55), SH.dark, s * 3.5, -0.3, 4.55);              // volets
-    b.add(Box(4.2, 0.03, 0.08), panelLine, s * 3.3, -0.15, 2.4);                 // ligne de panneau
-    // nacelles de canons en bout d'aile
-    b.add(Cyl(0.34, 0.34, 4.8, 12), SH.dark, s * 5.75, -0.3, -1.4, -HALF, 0, 0);
-    b.add(Cyl(0.13, 0.13, 2.6, 8), metal, s * 5.75, -0.3, -4.9, -HALF, 0, 0);
-    b.add(Cyl(0.2, 0.2, 0.3, 8), SH.dark, s * 5.75, -0.3, -6.1, -HALF, 0, 0);
-    b.add(Box(0.7, 0.1, 1.3), SH.accent, s * 5.75, 0.02, 0.2);
+    const x = s * (halfW(-0.5) + 0.05);
+    // profil latéral : lèvre inclinée à l'avant, carénage effilé vers l'arrière
+    b.add(Extrude([[-2.4, 0.33], [1.2, 0.33], [1.9, 0.0], [1.9, -0.45], [1.2, -0.62], [-1.85, -0.62]], 0.8, 0.04), SH.dark, x, 0, 0, 0, -HALF, 0);
+    b.add(Extrude([[-2.36, 0.28], [-1.92, -0.56], [-1.85, -0.56], [-2.3, 0.28]], 0.66, 0), blackMat, x, 0, -0.02, 0, -HALF, 0);
+    b.add(Box(0.84, 0.05, 0.5), SH.accent, x, 0.36, -2.0);
+  }
+  // ailes delta (apex vers l'avant)
+  b.add(Extrude([[-5.7, -4.4], [-5.7, -3.0], [-1.3, 1.2], [-0.9, 3.6], [0.9, 3.6], [1.3, 1.2], [5.7, -3.0], [5.7, -4.4]], 0.26), SH.hull, 0, WING_Y, 0, -HALF, 0, 0);
+  const wingTop = WING_Y + 0.19, wingBot = WING_Y - 0.19;
+  const leZ = x => -1.2 + (Math.abs(x) - 1.3) / 4.4 * 4.2; // bord d'attaque
+  for (const s of [-1, 1]) {
+    // bande orange le long du bord d'attaque
+    const len = Math.hypot(4.4, 4.2);
+    b.add(Box(len, 0.06, 0.16), SH.accent, s * 3.5, wingTop - 0.02, leZ(3.5) + 0.12, 0, -s * Math.atan2(4.2, 4.4), 0);
+    b.add(Box(3.6, 0.2, 0.5), SH.dark, s * 3.5, WING_Y, 4.2);                              // volets
+    b.add(Box(0.05, 0.22, 1.5), SH.dark, s * 3.0, wingTop + 0.1, leZ(3.0) + 1.0);         // cloison d'aile
+    // nacelle de canon en bout d'aile, centrée sur la corde
+    b.add(Cyl(0.32, 0.36, 4.2, 16), SH.dark, s * POD_X, WING_Y, POD_Z, -HALF, 0, 0);
+    b.add(new THREE.ConeGeometry(0.32, 0.7, 16), SH.dark, s * POD_X, WING_Y, POD_Z - 2.45, -HALF, 0, 0);
+    b.add(Cyl(0.12, 0.12, 2.6, 10), metal, s * POD_X, WING_Y, POD_Z - 3.6, -HALF, 0, 0);
+    b.add(Cyl(0.17, 0.17, 0.35, 10), SH.dark, s * POD_X, WING_Y, POD_Z - 4.85, -HALF, 0, 0);
+    for (const z of [-3.1, -3.7, -4.3]) b.add(new THREE.TorusGeometry(0.14, 0.03, 6, 12), SH.dark, s * POD_X, WING_Y, POD_Z + z);
+    b.add(Box(0.66, 0.08, 1.2), SH.accent, s * POD_X, WING_Y + 0.33, POD_Z - 0.6);
+    b.add(Cyl(0.36, 0.3, 0.4, 16), SH.dark, s * POD_X, WING_Y, POD_Z + 2.3, -HALF, 0, 0);
     // dérives inclinées
     b.add(Box(0.16, 2.7, 2.6), SH.hull, s * 1.38, 1.4, 3.9, 0.32, 0, s * -0.38);
     b.add(Box(0.2, 0.32, 1.3), SH.accent, s * 1.86, 2.62, 4.35, 0.32, 0, s * -0.38);
-    // réacteurs
-    b.add(Cyl(0.8, 0.88, 3.8, 18), SH.dark, s * 1.32, -0.1, 3.9, -HALF, 0, 0);
-    b.add(new THREE.TorusGeometry(0.86, 0.07, 6, 24), metal, s * 1.32, -0.1, 5.75);
-    b.add(Cyl(0.64, 0.82, 1.1, 18, true), nozzleMat, s * 1.32, -0.1, 6.35, -HALF, 0, 0);
-    b.add(Cyl(0.6, 0.6, 0.08, 18), MAT.engine, s * 1.32, -0.1, 6.0, -HALF, 0, 0);
-    // pylônes de missiles
-    b.add(Box(0.14, 0.45, 1.6), SH.dark, s * 3.2, -0.62, 0.3);
-    b.add(Box(0.14, 0.45, 1.6), SH.dark, s * 4.4, -0.62, 0.5);
-    // logements de train
-    b.add(Box(0.75, 0.05, 1.7), blackMat, s * 2.1, -0.46, 1.3);
-    // tuyères d'attitude
-    b.add(Box(0.3, 0.3, 0.4), SH.dark, s * 0.75, 0, -6.4);
-    b.add(Box(0.25, 0.4, 0.4), SH.dark, s * 5.75, -0.3, 1.25);
+    // dérives ventrales
+    b.add(Box(0.12, 0.85, 1.4), SH.dark, s * 0.85, botAt(4.3) - 0.2, 4.3, 0, 0, s * 0.45);
+    // réacteurs : nacelle, bague, tuyère, disque incandescent
+    b.add(Cyl(0.8, 0.88, 3.8, 24), SH.dark, s * 1.32, -0.1, 3.9, -HALF, 0, 0);
+    b.add(new THREE.TorusGeometry(0.87, 0.06, 8, 32), metal, s * 1.32, -0.1, 5.8);
+    b.add(Cyl(0.7, 0.84, 1.1, 24, true), nozzleMat, s * 1.32, -0.1, 6.35, -HALF, 0, 0);
+    b.add(Cyl(0.6, 0.66, 0.9, 24, true), nozzleMat, s * 1.32, -0.1, 6.3, -HALF, 0, 0);
+    b.add(Cyl(0.58, 0.58, 0.06, 24), MAT.engine, s * 1.32, -0.1, 5.95, -HALF, 0, 0);
+    // pylônes de missiles (derrière le bord d'attaque)
+    b.add(Box(0.14, 0.42, 1.5), SH.dark, s * 3.2, wingBot - 0.18, 2.0);
+    b.add(Box(0.14, 0.42, 1.5), SH.dark, s * 4.4, wingBot - 0.18, 2.9);
+    // tuyères d'attitude du nez
+    b.add(Box(0.22, 0.26, 0.4), SH.dark, s * (halfW(-6.4) + 0.05), 0, -6.4);
+    // soute du train principal (sous l'entrée d'air) et bord de trappe
+    b.add(Box(0.62, 0.04, 1.9), blackMat, s * MAIN_X, -0.64, MAIN_Z);
   }
-  b.add(Box(0.6, 0.05, 1.8), blackMat, 0, -1.02, -4.6);
-  b.add(Box(0.3, 0.3, 0.4), SH.dark, 0, 0.55, -6.5);
-  b.add(Box(0.3, 0.3, 0.4), SH.dark, 0, -0.55, -6.5);
-  // détails supplémentaires
-  b.add(Box(0.75, 0.035, 1.9), SH.matte, 0, 0.76, -5.35, -0.12, 0, 0);                 // panneau anti-reflets
-  b.add(Cyl(0.03, 0.03, 1.5, 6), metal, 0, 0, -9.4, -HALF, 0, 0);                         // tube de Pitot
-  b.add(Box(0.04, 0.42, 0.5), SH.dark, 0, 1.45, 3.4, -0.3, 0, 0);                         // antennes
-  b.add(Box(0.04, 0.3, 0.4), SH.dark, 0, -1.0, 1.0, 0.3, 0, 0);
-  for (const s of [-1, 1]) {
-    b.add(Box(0.05, 0.28, 1.6), SH.dark, s * 3.0, -0.1, 0.4);                             // cloisons d'aile
-    b.add(Box(0.12, 0.9, 1.5), SH.dark, s * 0.9, -1.15, 4.3, 0, 0, s * 0.45);             // dérives ventrales
-    b.add(Box(1.6, 0.06, 0.12), SH.accent, s * 4.6, -0.13, -2.3, 0, s * 0.62, 0);          // bord d'attaque
-    for (let k = 0; k < 12; k++) {                                                          // pétales de tuyère
-      const a = k / 12 * Math.PI * 2;
-      b.add(Box(0.28, 0.05, 0.75), SH.dark, s * 1.32 + Math.cos(a) * 0.86, -0.1 + Math.sin(a) * 0.86, 6.75, -Math.sin(a) * 0.12, Math.cos(a) * 0.12, a + HALF);
-    }
-  }
+  b.add(Box(0.24, 0.24, 0.3), SH.dark, 0, topAt(-6.5) + 0.08, -6.5);
+  b.add(Box(0.24, 0.24, 0.3), SH.dark, 0, botAt(-6.5) - 0.08, -6.5);
+  b.add(Box(0.56, 0.04, 2.0), blackMat, 0, botAt(NOSE_Z) + 0.03, NOSE_Z + 0.9);           // soute du train avant
   const g = b.build();
   shadowsOn(g);
-  // marquages : numéro d'escadrille sur les dérives, cocardes sur les ailes
+  // marquages : numéro d'escadrille sur les dérives, cocardes sur l'extrados
   for (const s of [-1, 1]) {
     const fin = new THREE.Group(); fin.position.set(s * 1.38, 1.4, 3.9); fin.rotation.set(0.32, 0, s * -0.38); g.add(fin);
     const n = decal(DECAL_NUM, 1.6, 1.6); n.position.x = s * 0.085; n.rotation.y = s * Math.PI / 2; fin.add(n);
-    const r = decal(DECAL_ROUNDEL, 1.1, 1.1); r.position.set(s * 4.1, -0.155, 0.6); r.rotation.x = -HALF; g.add(r);
+    const r = decal(DECAL_ROUNDEL, 1.0, 1.0); r.position.set(s * 3.95, wingTop + 0.012, 2.9); r.rotation.x = -HALF; g.add(r);
   }
 
   // --- pièces animées ---
   const parts = { flames: [], retro: [], rcs: {}, missiles: [], nav: [], gear: [], doors: [], gearT: 1 };
   for (const s of [-1, 1]) {
-    const f = flameMesh(0xeaf4ff, 0x3a7dff, 0.58); f.position.set(s * 1.32, -0.1, 6.5); g.add(f); parts.flames.push(f);
-    const r = flameMesh(0xfff0e0, 0xff8a3a, 0.16); r.rotation.y = Math.PI; r.position.set(s * 0.75, 0, -6.65); g.add(r); parts.retro.push(r);
+    const f = flameMesh(0xeaf4ff, 0x3a7dff, 0.6); f.position.set(s * 1.32, -0.1, 6.85); g.add(f); parts.flames.push(f);
+    const r = flameMesh(0xfff0e0, 0xff8a3a, 0.14); r.rotation.y = Math.PI; r.position.set(s * (halfW(-6.4) + 0.05), 0, -6.62); g.add(r); parts.retro.push(r);
   }
-  // propulseurs d'attitude : direction de l'éjection
-  const rcsDef = { noseUp: [0, 0.8, -6.5], noseDown: [0, -0.8, -6.5], noseL: [-0.95, 0, -6.4], noseR: [0.95, 0, -6.4], lUp: [-5.75, 0.0, 1.25], lDown: [-5.75, -0.6, 1.25], rUp: [5.75, 0.0, 1.25], rDown: [5.75, -0.6, 1.25] };
+  // propulseurs d'attitude : position et direction d'éjection
+  const nx = halfW(-6.4) + 0.2;
+  const rcsDef = { noseUp: [0, topAt(-6.5) + 0.3, -6.5], noseDown: [0, botAt(-6.5) - 0.3, -6.5], noseL: [-nx, 0, -6.4], noseR: [nx, 0, -6.4], lUp: [-POD_X, WING_Y + 0.5, POD_Z + 2.2], lDown: [-POD_X, WING_Y - 0.5, POD_Z + 2.2], rUp: [POD_X, WING_Y + 0.5, POD_Z + 2.2], rDown: [POD_X, WING_Y - 0.5, POD_Z + 2.2] };
   for (const k in rcsDef) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: new THREE.Color(0xdfeaff).multiplyScalar(3), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-    sp.position.set(...rcsDef[k]); sp.scale.set(1.6, 1.6, 1); g.add(sp); parts.rcs[k] = sp;
+    sp.position.set(...rcsDef[k]); sp.scale.set(1.5, 1.5, 1); g.add(sp); parts.rcs[k] = sp;
   }
-  // missiles visibles sous les ailes
-  for (const [x, z] of [[-3.2, 0.3], [3.2, 0.3], [-4.4, 0.5], [4.4, 0.5]]) { const m = model('missile'); for (const c of [...m.children]) if (c.isSprite) m.remove(c); m.position.set(x, -1.05, z); m.scale.setScalar(1.15); g.add(m); parts.missiles.push(m); }
-  // feux de navigation
-  for (const [c, x, y, z] of [[0xff3b2b, -5.75, -0.3, -0.2], [0x3bff6a, 5.75, -0.3, -0.2], [0xffffff, 0, 1.3, 5.2]]) {
-    const s = glowSprite(c, 1.8, 3, false); s.position.set(x, y, z); g.add(s); parts.nav.push(s);
+  // missiles visibles sous les pylônes
+  for (const [x, z] of [[-3.2, 2.0], [3.2, 2.0], [-4.4, 2.9], [4.4, 2.9]]) {
+    const m = model('missile'); for (const c of [...m.children]) if (c.isSprite) m.remove(c);
+    m.position.set(x, wingBot - 0.6, z); m.scale.setScalar(1.15); g.add(m); parts.missiles.push(m);
   }
-  // train d'atterrissage (pivots)
-  const nose = gearLeg(2.0, 0.42); nose.position.set(0, -1.0, -4.6); nose.userData.fold = ['x', 1.62]; g.add(nose); parts.gear.push(nose);
+  // feux de navigation (bouts d'aile rouge/vert, feu blanc à éclats sur l'épine)
+  for (const [c, x, y, z] of [[0xff3b2b, -POD_X - 0.38, WING_Y, POD_Z - 0.6], [0x3bff6a, POD_X + 0.38, WING_Y, POD_Z - 0.6], [0xffffff, 0, topAt(4.6) + 0.3, 4.6]]) {
+    const sp = glowSprite(c, 1.8, 3, false); sp.position.set(x, y, z); g.add(sp); parts.nav.push(sp);
+  }
+  // train : avant (se replie vers l'arrière), principaux (se replient vers le fuselage)
+  const noseY = botAt(NOSE_Z) + 0.12, mainY = -0.62;
+  const nose = gearLeg(GEAR_HEIGHT + noseY - 0.25, 0.4, 1); nose.position.set(0, noseY, NOSE_Z); nose.userData.fold = ['x', -1.62]; g.add(nose); parts.gear.push(nose);
   for (const s of [-1, 1]) {
-    const m = gearLeg(2.1, 0.5); m.position.set(s * 2.1, -0.75, 1.3); m.userData.fold = ['z', s * 1.62]; g.add(m); parts.gear.push(m);
-    const d = door(0.72, 1.7); d.position.set(s * 2.1 + s * 0.38, -0.5, 1.3); d.scale.x = -s; d.userData.ax = s * 1.3; g.add(d); parts.doors.push(d);
-    const nd = door(0.3, 1.8); nd.position.set(s * 0.32, -1.04, -4.6); nd.scale.x = -s; nd.userData.ax = s * 1.4; g.add(nd); parts.doors.push(nd);
+    const m = gearLeg(GEAR_HEIGHT + mainY - 0.25, 0.5, -1); m.position.set(s * MAIN_X, mainY, MAIN_Z); m.userData.fold = ['z', -s * 1.62]; g.add(m); parts.gear.push(m);
+    const d = door(0.62, 1.9); d.position.set(s * (MAIN_X + 0.31), -0.64, MAIN_Z); d.scale.x = -s; d.userData.ax = s * 1.35; g.add(d); parts.doors.push(d);
+    const nd = door(0.28, 2.0); nd.position.set(s * 0.28, botAt(NOSE_Z) + 0.02, NOSE_Z + 0.9); nd.scale.x = -s; nd.userData.ax = s * 1.45; g.add(nd); parts.doors.push(nd);
   }
   const eng = new THREE.PointLight(0x7fb0ff, 0, 30, 2); eng.position.set(0, -0.2, 8.2); g.add(eng); parts.engLight = eng;
-  // phare d'atterrissage
-  const lamp = glowSprite(0xffffff, 2.2, 3, false); lamp.position.set(0, -2.6, -4.9); g.add(lamp); parts.lamp = lamp;
+  // phare de roulage sur la jambe avant
+  const lamp = glowSprite(0xffffff, 1.0, 2.5, false); lamp.position.set(0, -1.6, NOSE_Z - 0.25); g.add(lamp); parts.lamp = lamp;
+  shadowsOn(g);
   g.userData = {
     parts,
-    engines: [new THREE.Vector3(-1.32, -0.1, 6.6), new THREE.Vector3(1.32, -0.1, 6.6)],
-    guns: [new THREE.Vector3(-5.75, -0.3, -6.3), new THREE.Vector3(5.75, -0.3, -6.3), new THREE.Vector3(0, -1.2, -5)],
+    engines: [new THREE.Vector3(-1.32, -0.1, 7.0), new THREE.Vector3(1.32, -0.1, 7.0)],
+    guns: [new THREE.Vector3(-POD_X, WING_Y, POD_Z - 5.1), new THREE.Vector3(POD_X, WING_Y, POD_Z - 5.1), new THREE.Vector3(0, botAt(-5) - 0.2, -5)],
     rcsDirs: { noseUp: [0, 1, 0], noseDown: [0, -1, 0], noseL: [-1, 0, 0], noseR: [1, 0, 0], lUp: [0, 1, 0], lDown: [0, -1, 0], rUp: [0, 1, 0], rDown: [0, -1, 0] },
   };
-  shadowsOn(g);
   return g;
 }
 
-/** Train : t = 0 rentré, 1 sorti. Les trappes s'ouvrent d'abord, puis les jambes pivotent. */
+/** Train : t = 0 rentré, 1 sorti. Les trappes s'ouvrent d'abord, puis les jambes pivotent ; elles se referment à moitié une fois le train sorti. */
 export function setGear(ship, t, compress = 0) {
   const P = ship.userData.parts; P.gearT = t;
-  const legs = smooth(0.3, 1, t), doors = smooth(0, 0.3, t);
+  const legs = smooth(0.3, 1, t), doors = t >= 0.999 ? 0.75 : smooth(0, 0.3, t);
   for (const l of P.gear) {
     const [ax, a] = l.userData.fold; l.rotation.x = 0; l.rotation.z = 0; l.rotation[ax] = a * (1 - legs);
     l.visible = t > 0.02;
-    l.userData.piston.position.y = -l.userData.len * 0.72 + compress * 0.25;
-    l.userData.foot.position.y = -l.userData.len + compress * 0.25;
+    const len = l.userData.len;
+    l.userData.piston.position.y = -len * 0.76 + compress * 0.22;
+    l.userData.foot.position.y = -len + compress * 0.22;
   }
-  for (const d of P.doors) { d.rotation.z = d.userData.ax * doors; d.visible = true; }
+  for (const d of P.doors) d.rotation.z = d.userData.ax * doors;
   P.lamp.visible = t > 0.95;
 }
 

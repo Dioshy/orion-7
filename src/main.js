@@ -31,7 +31,7 @@ import { updatePickups, clearPickups } from './game/pickups.js';
 import { updateWaves, launchWaveNow } from './game/waves.js';
 import { updateCombo, resetCombo, banner } from './game/score.js';
 import { rollUpgrades, applyUpgrade } from './game/upgrades.js';
-import { updateCamera, resetCamera } from './game/camera.js';
+import { updateCamera, resetCamera, cameraTransition } from './game/camera.js';
 import { initHud, drawHUD } from './ui/hud.js';
 import { comms, clearComms } from './ui/comms.js';
 import { initMenus, show, showUpgrade, showOver, showVictory, statItems, medals, nav, updateBest } from './ui/menus.js';
@@ -93,10 +93,10 @@ function startGame() {
   G.endless = false; G.score = 0; G.wave = 0; G.waveActive = false; G.interT = 16; G.stats = newStats(); G.up = {}; G.time = 0;
   pendingVictory = false; resetCombo();
   resetStation(G.diff.stationHp); resetPlayerForGame(); resetTutorial(); clearComms();
-  const fade = $('fade'); fade.style.transition = 'none'; fade.style.opacity = '1'; requestAnimationFrame(() => requestAnimationFrame(() => { fade.style.transition = ''; fade.style.opacity = '0'; }));
+  const fade = $('fade'); fade.style.transition = 'none'; fade.style.opacity = '0.55'; requestAnimationFrame(() => requestAnimationFrame(() => { fade.style.transition = ''; fade.style.opacity = '0'; }));
   show(null); hudEl.classList.add('flying');
   comms('Ici Contrôle Orion. Contacts hostiles détectés à 8 km. Décollage autorisé.');
-  prepareLaunch(true); resetCamera(); recenterStick();
+  cameraTransition(1.8); prepareLaunch(true); resetCamera(); recenterStick();
   setWantLock(true); requestLock();
 }
 
@@ -206,7 +206,7 @@ function step(h) {
   else if (G.state === 'flight') updatePlayer(h);
   else if (G.state === 'dead') {
     G.deadT -= h;
-    if (G.deadT <= 0) { if (player.lives > 0) { prepareLaunch(false); resetCamera(); } else { endGame('pilot'); return; } }
+    if (G.deadT <= 0) { if (player.lives > 0) { cameraTransition(1.4); prepareLaunch(false); resetCamera(); } else { endGame('pilot'); return; } }
   }
   updateEnemies(h); updateBoss(h); updateTorpedoes(h); updateEnemyMissiles(h); updateFlares(h);
   if (G.state === 'over') return;

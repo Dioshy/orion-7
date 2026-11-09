@@ -19,11 +19,19 @@ function setBody(v) {
   for (const ch of player.obj.children) if (!ch.isLight && !(ch.isObject3D && ch.children.some(x => x.isLight) && !ch.isMesh)) ch.visible = v;
 }
 export function resetCamera() { camQ.copy(player.obj.quaternion); lag.set(0, 0, 0); push = 0; }
+/* Transition : on part de la pose actuelle de la caméra et on rejoint la nouvelle en douceur. */
+const blend = { t: 1, dur: 1, pos: new THREE.Vector3(), quat: new THREE.Quaternion(), fov: 70 };
+export function cameraTransition(dur = 1.4) {
+  const cam = R.camera; blend.t = 0; blend.dur = dur; blend.pos.copy(cam.position); blend.quat.copy(cam.quaternion); blend.fov = cam.fov;
+}
 
 export function updateCamera(rdt, dt) {
   const cam = R.camera, p = player;
   const st = (G.state === 'paused' || G.state === 'upgrade') ? G.prevState : G.state;
   let fov = settings.fov;
+  if (import.meta.env.DEV && st === 'studio' && window.__orion?.studio) { // vue d'atelier (développement)
+    const v = window.__orion.studio; cam.position.set(v.x, v.y, v.z); cam.lookAt(p.pos); cam.fov = 38; cam.updateProjectionMatrix(); return;
+  }
   if (st === 'menu' || st === 'loading') {
     const now = performance.now() / 1000, shot = Math.floor(now / 12) % 3;
     if (shot === 0 || !p.obj.visible) {
@@ -71,7 +79,14 @@ export function updateCamera(rdt, dt) {
     cam.position.lerp(_v, 1 - Math.exp(-rdt * 0.8));
     _w.set(0, 0, 0); cam.lookAt(_w); fov = 55;
   }
-  cam.fov = damp(cam.fov, fov, 3, rdt || 0.016); cam.updateProjectionMatrix();
+  cam.fov = damp(cam.fov, fov, 3, rdt || 0.016);
+  if (blend.t < 1) {
+    blend.t = Math.min(1, blend.t + (rdt || 0.016) / blend.dur);
+    const k = 1 - Math.pow(1 - blend.t, 3); // sortie douce
+    cam.position.lerpVectors(blend.pos, cam.position, k); cam.quaternion.slerpQuaternions(blend.quat, cam.quaternion, k);
+    cam.fov = blend.fov + (cam.fov - blend.fov) * k;
+  }
+  cam.updateProjectionMatrix();
   const ck = G.camMode === 'cockpit' && (st === 'flight' || st === 'launch') && p.alive;
   updateCockpit(ck, head, headQ, cam.fov, p.inp);
   if (G.shake > 0.01 && dt > 0) {
