@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Interception Orion-7</title>
+<meta name="description" content="Défendez la station Orion-7 : combat spatial newtonien dans le navigateur.">
+<meta name="theme-color" content="#03050a">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="hud"></canvas>
+<div id="vignette"></div>
+<div id="shieldfx"></div>
+<div id="boostfx"></div>
+<div id="odfx"></div>
+<div id="fade"></div>
+<div id="comms" aria-live="polite"></div>
+
+<!-- Menu principal -->
+<div id="menu" class="overlay" hidden>
+  <div class="card">
+    <div class="eyebrow">Station Orion-7 · orbite basse · 412 km</div>
+    <h1>Inter<span>ception</span></h1>
+    <p class="brief">Contrôle Orion signale des chasseurs, des intercepteurs, des essaims de drones et des bombardiers porte-torpilles en approche. Une frégate lourde a même été repérée. Décollez depuis le pont d'envol, suivez les balises, abattez-les et détruisez leurs torpilles avant qu'elles ne touchent la station. Tenez dix vagues pour sauver Orion-7.</p>
+    <div class="field">
+      <span class="label">Difficulté</span>
+      <div class="seg" id="diffSeg" role="radiogroup" aria-label="Difficulté">
+        <button type="button" data-diff="recrue" role="radio">Recrue</button>
+        <button type="button" data-diff="pilote" role="radio">Pilote</button>
+        <button type="button" data-diff="veteran" role="radio">Vétéran</button>
+      </div>
+      <span class="hint" id="diffHint"></span>
+    </div>
+    <div class="row">
+      <button id="btnStart" type="button">Décoller</button>
+      <button class="ghost" type="button" data-open="settings">Paramètres</button>
+      <button class="ghost" type="button" data-open="controls">Commandes</button>
+      <button class="ghost" type="button" data-open="records">Records</button>
+    </div>
+    <div class="note" id="note">Se pilote au clavier et à la souris, ou à la manette. Le curseur est capturé pendant le vol : déplacez la souris pour orienter le nez.</div>
+    <div class="note" id="bestLine"></div>
+  </div>
+</div>
+
+<!-- Paramètres -->
+<div id="settings" class="overlay" hidden>
+  <div class="card" style="max-width:640px">
+    <div class="eyebrow">Configuration</div>
+    <h2>Paramètres</h2>
+    <div class="settings" id="settingsForm"></div>
+    <div class="row"><button type="button" data-back>Retour</button></div>
+  </div>
+</div>
+
+<!-- Commandes -->
+<div id="controls" class="overlay" hidden>
+  <div class="card">
+    <div class="eyebrow">Manuel de vol</div>
+    <h2>Commandes</h2>
+    <div class="controls" id="ctl"></div>
+    <div class="eyebrow" style="margin-top:4px">Manette</div>
+    <div class="controls" id="ctlPad"></div>
+    <div class="row"><button type="button" data-back>Retour</button></div>
+  </div>
+</div>
+
+<!-- Records -->
+<div id="records" class="overlay" hidden>
+  <div class="card" style="max-width:640px">
+    <div class="eyebrow">Tableau d'honneur</div>
+    <h2>Records</h2>
+    <div id="recordsList"></div>
+    <div class="row"><button type="button" data-back>Retour</button></div>
+  </div>
+</div>
+
+<!-- Pause -->
+<div id="pause" class="overlay" hidden>
+  <div class="card" style="max-width:560px">
+    <div class="eyebrow">Simulation suspendue</div>
+    <h2>Pause</h2>
+    <p class="brief" id="pauseText">Les vaisseaux ennemis attendent avec vous.</p>
+    <div class="row">
+      <button id="btnResume" type="button">Reprendre</button>
+      <button class="ghost" type="button" data-open="settings">Paramètres</button>
+      <button class="ghost" type="button" data-open="controls">Commandes</button>
+      <button id="btnQuit" class="ghost" type="button">Abandonner la sortie</button>
+    </div>
+  </div>
+</div>
+
+<!-- Amélioration entre les vagues -->
+<div id="upgrade" class="overlay" hidden>
+  <div class="card" style="max-width:920px">
+    <div class="eyebrow" id="upEyebrow">Vague repoussée</div>
+    <h2 id="upTitle">Choisissez une amélioration</h2>
+    <p class="brief" id="upText"></p>
+    <div class="cards" id="upCards"></div>
+    <div class="note">Touches <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> ou clic. Les améliorations durent toute la sortie.</div>
+  </div>
+</div>
+
+<!-- Victoire -->
+<div id="victory" class="overlay" hidden>
+  <div class="card" style="max-width:680px">
+    <div class="eyebrow">Rapport de Contrôle Orion</div>
+    <h2>Orion-7 <span class="ok">tient bon</span></h2>
+    <p class="brief">La frégate est détruite et les dix vagues sont repoussées. La station est sauvée. Vous pouvez continuer en mode infini pour améliorer votre score, avec des vagues de plus en plus dures.</p>
+    <div class="stats" id="vicStats"></div>
+    <div class="row">
+      <button id="btnEndless" type="button">Continuer en mode infini</button>
+      <button id="btnFinish" class="ghost" type="button">Terminer la sortie</button>
+    </div>
+  </div>
+</div>
+
+<!-- Débriefing -->
+<div id="over" class="overlay" hidden>
+  <div class="card" style="max-width:720px">
+    <div class="eyebrow" id="overEyebrow">Débriefing</div>
+    <h2 id="overTitle">Station perdue</h2>
+    <p class="brief" id="overText"></p>
+    <div class="record" id="overRecord" hidden></div>
+    <div class="stats" id="overStats"></div>
+    <div class="medals" id="overMedals"></div>
+    <div class="row">
+      <button id="btnAgain" type="button">Nouvelle sortie</button>
+      <button id="btnMenu" class="ghost" type="button">Menu principal</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading"><div>Initialisation des systèmes…</div><div class="bar"><i id="loadBar"></i></div></div>
+<div id="fatal" hidden></div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

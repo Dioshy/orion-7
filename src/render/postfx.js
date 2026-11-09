@@ -1,0 +1,46 @@
+// Post-traitements : rayons de soleil volumétriques (écran) et flou radial de vitesse avec aberration chromatique.
+import * as THREE from 'three';
+
+export const GodRaysShader = {
+  uniforms: { tDiffuse: { value: null }, sunPos: { value: new THREE.Vector2(0.5, 0.5) }, strength: { value: 0 }, threshold: { value: 1.2 }, decay: { value: 0.955 }, density: { value: 0.85 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform vec2 sunPos; uniform float strength; uniform float threshold; uniform float decay; uniform float density;
+    varying vec2 vUv;
+    #define N 40
+    void main(){
+      vec4 base = texture2D(tDiffuse, vUv);
+      if (strength < 0.002) { gl_FragColor = base; return; }
+      vec2 delta = (vUv - sunPos) * density / float(N);
+      vec2 uv = vUv; float illum = 1.0; vec3 acc = vec3(0.0);
+      float jitter = fract(sin(dot(vUv, vec2(12.9898,78.233))) * 43758.5453);
+      uv -= delta * jitter;
+      for (int i = 0; i < N; i++) {
+        uv -= delta;
+        vec3 s = texture2D(tDiffuse, clamp(uv, 0.0, 1.0)).rgb;
+        float l = max(dot(s, vec3(0.299, 0.587, 0.114)) - threshold, 0.0);
+        acc += s * min(l, 4.0) * illum;
+        illum *= decay;
+      }
+      gl_FragColor = vec4(base.rgb + acc * strength / float(N), base.a);
+    }`,
+};
+
+export const SpeedShader = {
+  uniforms: { tDiffuse: { value: null }, amount: { value: 0 }, center: { value: new THREE.Vector2(0.5, 0.5) } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float amount; uniform vec2 center; varying vec2 vUv;
+    void main(){
+      vec2 c = vUv - center; float r = length(c);
+      float k = amount * 0.06 * smoothstep(0.15, 0.8, r);
+      vec3 col = vec3(0.0);
+      for (int i = 0; i < 10; i++) { float t = float(i) / 9.0; col += texture2D(tDiffuse, center + c * (1.0 - k * t)).rgb; }
+      col /= 10.0;
+      float ca = amount * 0.0022 * r;
+      col.r = mix(col.r, texture2D(tDiffuse, center + c * (1.0 + ca)).r, 0.7);
+      col.b = mix(col.b, texture2D(tDiffuse, center + c * (1.0 - ca)).b, 0.7);
+      col *= 1.0 - amount * 0.25 * smoothstep(0.35, 0.9, r);
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+};
