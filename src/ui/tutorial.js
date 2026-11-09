@@ -20,6 +20,7 @@ const CONTEXT = [
   { id: 'dock', when: () => player.hull < player.S.maxHull * 0.6, text: () => 'Revenez devant le hangar à moins de 30 m/s pour réparer et réarmer' },
   { id: 'pickup', when: () => G.pickups.some(p => p.pos.distanceTo(player.pos) < 2500), text: () => 'Caisson repéré : traversez-le pour le ramasser (réparation, munitions, bouclier, surcharge)' },
   { id: 'boss', when: () => !!boss, text: () => 'Détruisez les deux générateurs (dômes bleus) pour faire tomber le bouclier de la frégate' },
+  { id: 'ability', when: () => G.waveActive && G.enemies.length > 0, text: () => `${input.usingPad ? 'Y' : k('KeyZ')} : capacité spéciale (choisie au hangar) — utilisez-la dans les moments chauds !` },
   { id: 'combo', when: () => G.combo.chain >= 2, text: () => 'Enchaînez les destructions pour augmenter le multiplicateur de score' },
 ];
 

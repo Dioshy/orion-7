@@ -5,10 +5,10 @@ import { station, addPdTurret, repairStation } from './station.js';
 import { shuffle } from '../core/util.js';
 
 export const UPGRADES = [
-  { id: 'dmg', ic: '✦', name: 'Canons à plasma', desc: '+20 % de dégâts des canons.', max: 5 },
-  { id: 'rof', ic: '≫', name: 'Culasse rapide', desc: '+15 % de cadence de tir.', max: 4 },
-  { id: 'cool', ic: '❄', name: 'Dissipateurs', desc: 'Les canons chauffent 25 % moins vite.', max: 4 },
-  { id: 'gun3', ic: '⋔', name: 'Canon ventral', desc: 'Un troisième canon tire avec les deux autres.', max: 1 },
+  { id: 'dmg', ic: '✦', name: 'Armes surpuissantes', desc: '+20 % de dégâts de l\'arme principale.', max: 5 },
+  { id: 'rof', ic: '≫', name: 'Culasse rapide', desc: '+15 % de cadence de tir.', max: 4, need: () => player.S.weapon !== 'laser' },
+  { id: 'cool', ic: '❄', name: 'Dissipateurs', desc: 'L\'arme principale chauffe 25 % moins vite.', max: 4 },
+  { id: 'gun3', ic: '⋔', name: 'Arme ventrale', desc: 'Une troisième arme tire avec les deux autres.', max: 1, need: () => player.S.guns < 3 },
   { id: 'missiles', ic: '➶', name: 'Soute élargie', desc: '+2 missiles emportés (rechargés tout de suite).', max: 3 },
   { id: 'salvo', ic: '⇉', name: 'Salve double', desc: 'Chaque tir verrouillé lance deux missiles.', max: 1, need: () => true },
   { id: 'lock', ic: '◎', name: 'Calculateur de tir', desc: 'Verrouillage missile 35 % plus rapide.', max: 2 },

@@ -4,12 +4,12 @@ import { clamp } from './util.js';
 
 export const KEY_ACTIONS = {
   KeyG: 'missile', KeyT: 'target', KeyY: 'cycle', Tab: 'targetTorp', KeyB: 'fa', KeyV: 'camera', KeyN: 'radar',
-  KeyC: 'flare', KeyX: 'zeroThrottle', KeyP: 'pause', Escape: 'pause', Enter: 'launchWave', NumpadEnter: 'launchWave',
+  KeyC: 'flare', KeyX: 'zeroThrottle', KeyZ: 'ability', KeyP: 'pause', Escape: 'pause', Enter: 'launchWave', NumpadEnter: 'launchWave',
   Digit1: 'pick1', Digit2: 'pick2', Digit3: 'pick3', Numpad1: 'pick1', Numpad2: 'pick2', Numpad3: 'pick3', Space: 'skip',
 };
 const PREVENT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab']);
 // Manette « standard » : boutons → actions ponctuelles
-const PAD_ACTIONS = { 0: 'target', 1: 'fa', 2: 'cycle', 3: 'camera', 4: 'flare', 8: 'radar', 9: 'pause', 10: 'targetTorp', 11: 'zeroThrottle' };
+const PAD_ACTIONS = { 0: 'target', 1: 'fa', 2: 'cycle', 3: 'ability', 4: 'flare', 8: 'radar', 9: 'pause', 10: 'targetTorp', 11: 'camera' };
 
 export const input = {
   keys: {}, mouse: { x: innerWidth / 2, y: innerHeight / 2, l: false }, stick: { x: 0, y: 0 },

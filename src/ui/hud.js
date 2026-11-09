@@ -13,6 +13,7 @@ import { PICKUP_INFO } from '../game/pickups.js';
 import { comboWindow } from '../game/score.js';
 import { keyLabel } from './keys.js';
 import { tutorialHint } from './tutorial.js';
+import { ability, abilityDef } from '../game/abilities.js';
 import { SUN_DIR, PLANET_POS, PLANET_R } from '../render/background.js';
 
 const FONT_D = '"Chakra Petch","Bahnschrift","Segoe UI",sans-serif';
@@ -61,7 +62,7 @@ export function drawHUD() {
   if (settings.showFps) { c.font = `500 11px ${FONT_M}`; c.fillStyle = COL.dim; c.textAlign = 'left'; c.fillText(`${Math.round(R.fps)} i/s · ×${R.pr.toFixed(2)}`, 12, H - 12); }
   const now = performance.now(), hdt = Math.min(0.1, (now - lastHud) / 1000); lastHud = now;
   if (st !== 'loading' && st) drawFlare(hdt);
-  if (st === 'menu' || st === 'loading' || !st) return;
+  if (st === 'menu' || st === 'loading' || st === 'hangar' || !st) return;
   if (st === 'over' || st === 'victory') return;
   if (G.hudBoot < 1 && G.state !== 'paused') G.hudBoot = Math.min(1, G.hudBoot + hdt * 0.7);
   const p = player, flying = st === 'flight' || st === 'launch';
@@ -125,6 +126,7 @@ export function drawHUD() {
     }
     drawDamageDirs(p);
     drawPanels(spd, sd);
+    drawAbility(p);
     if (G.camMode !== 'cockpit') drawRadar();
     drawCombo();
   }
@@ -266,7 +268,12 @@ function drawPanels(spd, sd) {
   const acc = p.accF; c.font = `700 14px ${FONT_M}`; c.fillStyle = acc > 8 ? COL.ok : acc < -8 ? COL.amber : 'rgba(0,0,0,0)'; c.fillText(acc > 8 ? '▲' : '▼', lx + nw + 34, py + (narrow ? 26 : 34));
   if (p.fa) bar(lx, y, rw, 5, p.throttle, COL.hud, 'GAZ', `${Math.round(p.throttle * SPD.cruise)} m/s`);
   else { c.font = `700 12px ${FONT_D}`; c.fillStyle = blinkOn() ? COL.amber : 'rgba(255,179,71,0.5)'; c.fillText('ASSISTANCE COUPÉE', lx, y); }
-  y += 30; bar(lx, y, rw, 5, p.boost / S.maxBoost, p.boost < S.maxBoost * 0.2 ? COL.amber : COL.friend, 'POSTCOMBUSTION', `${Math.round(p.boost / S.maxBoost * 100)} %`);
+  y += 30;
+  if (S.boostType === 'dash') {
+    c.font = `600 10px ${FONT_D}`; c.fillStyle = COL.dim; c.textAlign = 'left'; c.fillText('IMPULSIONS', lx, y - 5);
+    const ch = p.dashCharges ?? 3;
+    for (let i = 0; i < 3; i++) { const f = clamp(ch - i, 0, 1); c.fillStyle = COL.faint; c.fillRect(lx + i * (rw / 3), y, rw / 3 - 4, 5); c.fillStyle = f >= 1 ? COL.friend : 'rgba(127,212,255,0.45)'; c.fillRect(lx + i * (rw / 3), y, (rw / 3 - 4) * f, 5); }
+  } else bar(lx, y, rw, 5, p.boost / S.maxBoost, p.boost < S.maxBoost * 0.2 ? COL.amber : COL.friend, S.boostType === 'fusion' ? 'RÉACTEUR À FUSION' : 'POSTCOMBUSTION', `${Math.round(p.boost / S.maxBoost * 100)} %`);
   y += 24; c.font = `500 11px ${FONT_M}`; c.textAlign = 'left'; c.fillStyle = COL.dim;
   c.fillText(`FA ${p.fa ? 'ON ' : 'OFF'}  ·  ${fr(Math.min(p.g, 19.9), 1)} G`, lx, y);
   c.fillText(`ORION-7  ${fmtDist(sd)}`, lx, y + 16);
@@ -276,7 +283,7 @@ function drawPanels(spd, sd) {
   bar(rx, y, rw, 5, p.shield / S.maxShield, COL.friend, 'BOUCLIERS', `${Math.round(p.shield)}`, 'right');
   y += 30; bar(rx, y, rw, 5, p.hull / S.maxHull, p.hull < S.maxHull * 0.3 ? COL.red : p.hull < S.maxHull * 0.6 ? COL.amber : COL.hud, 'COQUE', `${Math.round(p.hull)}`, 'right');
   y += 30; bar(rx, y, rw, 5, p.heat / 100, p.odT > 0 ? COL.gold : p.overheat ? COL.red : p.heat > 70 ? COL.amber : COL.hud, p.odT > 0 ? 'SURCHARGE' : p.overheat ? 'SURCHAUFFE' : 'CHAUFFE CANONS', undefined, 'right');
-  y += 26; c.textAlign = 'right'; c.font = `500 11px ${FONT_M}`; c.fillStyle = p.ammo < 150 ? COL.amber : COL.dim; c.fillText(`OBUS ${fr(Math.floor(p.ammo))}`, rx + rw, y);
+  y += 26; c.textAlign = 'right'; c.font = `500 11px ${FONT_M}`; c.fillStyle = S.weapon === 'cannon' && p.ammo < 150 ? COL.amber : COL.dim; c.fillText(S.weapon === 'cannon' ? `OBUS ${fr(Math.floor(p.ammo))}` : S.weapon === 'laser' ? 'LASERS · ÉNERGIE' : 'PLASMA · ÉNERGIE', rx + rw, y);
   y += 18; const mm = S.maxMissiles, mw = Math.min(11, 100 / mm);
   c.fillStyle = COL.dim; c.fillText('MISSILES', rx + rw - mm * mw - 6, y);
   for (let i = 0; i < mm; i++) { c.fillStyle = i < p.missiles ? COL.hud : COL.faint; c.fillRect(rx + rw - (i + 1) * mw + 2, y - 9, mw - 4, 10); }
@@ -409,5 +416,21 @@ function drawFlare(dt) {
   }
   const hx = sx + dx * 1.9, hy = sy + dy * 1.9, hr = 40 * k; c.strokeStyle = `rgba(200,220,255,${0.08 * flareVis})`; c.lineWidth = 2;
   c.beginPath(); for (let i = 0; i <= 6; i++) { const a = i / 6 * TAU; i ? c.lineTo(hx + Math.cos(a) * hr, hy + Math.sin(a) * hr) : c.moveTo(hx + Math.cos(a) * hr, hy + Math.sin(a) * hr); } c.stroke();
+  c.restore();
+}
+
+/* ---------- Capacité spéciale : icône avec recharge ---------- */
+function drawAbility(p) {
+  const def = abilityDef(), cd = ability.cd, ready = cd <= 0, k = ready ? 1 : 1 - cd / def.cd;
+  const x = W / 2 + Math.min(130, W * 0.2) + 46, y = H - Math.min(130, W * 0.2) * 0.42 - 36, r = 22;
+  c.save();
+  c.fillStyle = 'rgba(6,14,26,0.6)'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+  c.strokeStyle = COL.faint; c.lineWidth = 3; c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke();
+  c.strokeStyle = ready ? COL.gold : COL.friend; c.beginPath(); c.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + TAU * k); c.stroke();
+  if (ready) { c.globalAlpha = 0.35 + 0.25 * Math.sin(performance.now() / 200); c.fillStyle = COL.gold; c.beginPath(); c.arc(x, y, r - 4, 0, TAU); c.fill(); c.globalAlpha = 1; }
+  c.fillStyle = ready ? '#1b1206' : COL.hud; c.font = `700 14px ${FONT_M}`; c.textAlign = 'center'; c.fillText(ready ? keyLabel('KeyZ') : String(Math.ceil(cd)), x, y + 5);
+  c.font = `600 9px ${FONT_D}`; c.fillStyle = ready ? COL.gold : COL.dim; c.fillText(def.name.toUpperCase(), x, y + r + 13);
+  if (ability.active > 0) { c.fillStyle = COL.gold; c.fillText(`${Math.ceil(ability.active)} s`, x, y - r - 6); }
+  if (ability.wing) { c.fillStyle = COL.friend; c.fillText(`DRONE ${Math.ceil(ability.wing.life)} s`, x, y - r - 6); }
   c.restore();
 }

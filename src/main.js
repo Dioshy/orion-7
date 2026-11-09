@@ -21,17 +21,20 @@ import { initWeapons, updateBullets, updateMissiles, updateEnemyMissiles, update
 import { station, initStation, resetStation, updateStation, damageStation } from './game/station.js';
 import { initGates, updateGates, hideGates } from './game/launch.js';
 import { initAsteroids } from './game/asteroids.js';
+import { useAbility, updateAbilities, resetAbility } from './game/abilities.js';
 import { setGear } from './render/ship.js';
 import { initCockpit } from './render/cockpit.js';
 import { smooth } from './core/util.js';
-import { player, updateShipVisuals, updateMenuShip, killPlayer, initPlayer, resetPlayerForGame, prepareLaunch, updateLaunch, updatePlayer, skipLaunch, fireMissile, fireFlares, targetBoresight, targetCycle, targetTorpedo } from './game/player.js';
+import { initHangar, renderHangar } from './ui/hangar.js';
+import { profile, awardCredits } from './game/loadout.js';
+import { player, applyLoadout, placeInHangar, updateHangarShip, updateShipVisuals, updateMenuShip, killPlayer, initPlayer, resetPlayerForGame, prepareLaunch, updateLaunch, updatePlayer, skipLaunch, fireMissile, fireFlares, targetBoresight, targetCycle, targetTorpedo } from './game/player.js';
 import { updateEnemies, rebuildTargets, clearEnemies, damageHostile } from './game/enemies.js';
 import { boss, updateBoss, clearBoss } from './game/boss.js';
 import { updatePickups, clearPickups } from './game/pickups.js';
 import { updateWaves, launchWaveNow } from './game/waves.js';
 import { updateCombo, resetCombo, banner } from './game/score.js';
 import { rollUpgrades, applyUpgrade } from './game/upgrades.js';
-import { updateCamera, resetCamera, startIntro } from './game/camera.js';
+import { updateCamera, resetCamera, startIntro, snapCamera } from './game/camera.js';
 import { initHud, drawHUD } from './ui/hud.js';
 import { comms, clearComms } from './ui/comms.js';
 import { initMenus, show, showUpgrade, showOver, showVictory, statItems, medals, nav, updateBest } from './ui/menus.js';
@@ -63,7 +66,8 @@ async function boot() {
   input.captureKeys = () => simRunning();
   input.onAction = onAction;
   input.onLockLost = () => { if (simRunning()) { lastAutoPause = performance.now(); setPause(true); } };
-  initMenus({ start: startGame, resume: () => setPause(false), quit: quitGame, toMenu, pickUpgrade, endless: continueEndless, finish: () => { pendingVictory = false; G.state = G.prevState; endGame('victory'); } });
+  initHangar({ change: () => { applyLoadout(); placeInHangar(); }, launch: startGame, back: toMenu });
+  initMenus({ hangar: openHangar, start: startGame, resume: () => setPause(false), quit: quitGame, toMenu, pickUpgrade, endless: continueEndless, finish: () => { pendingVictory = false; G.state = G.prevState; endGame('victory'); } });
   G.hooks.waveCleared = onWaveCleared;
   G.hooks.stationLost = () => endGame('station');
   audio.listener = R.camera;
@@ -83,7 +87,7 @@ async function boot() {
 function clearWorld() {
   timers.forEach(clearTimeout); timers = [];
   clearEnemies(); clearProjectiles(); clearPickups(); clearBoss(); clearEffects();
-  G.targets.length = 0; G.spawnQueue = []; G.clearedInfo = null; hideGates(); G.dmgDirs = []; G.banner = null; G.announce = null; G.timeScale = 1; G.slowT = 0; G.shake = 0;
+  G.targets.length = 0; G.spawnQueue = []; G.clearedInfo = null; hideGates(); resetAbility(); G.dmgDirs = []; G.banner = null; G.announce = null; G.timeScale = 1; G.slowT = 0; G.shake = 0;
 }
 
 function startGame() {
@@ -98,6 +102,12 @@ function startGame() {
   comms('Ici Contrôle Orion. Contacts hostiles détectés à 8 km. Décollage autorisé.');
   prepareLaunch(true); resetCamera(); startIntro(3.2); G.hudBoot = -3.2 * 0.7; recenterStick();
   setWantLock(true); requestLock();
+}
+
+function openHangar() {
+  audioInit(); clearWorld(); clearComms();
+  G.state = 'hangar'; player.alive = false; setWantLock(false); hudEl.classList.remove('flying'); setEngine(0);
+  applyLoadout(); placeInHangar(); snapCamera(); renderHangar(); show('hangar');
 }
 
 function toMenu() {
@@ -149,13 +159,14 @@ function endGame(reason) {
   }
   if (flyingBefore !== 'dead') player.obj.visible = reason !== 'station' && player.alive;
   const rank = G.score > 0 ? addScore({ score: G.score, wave: G.wave, diff: G.diffKey, date: Date.now(), victory }) : -1;
+  const credits = { gain: awardCredits(G.score, G.stats.wavesCleared), total: 0 }; credits.total = profile.credits;
   const T = {
     station: ['Débriefing', 'Station perdue', `Orion-7 n'a pas résisté à la vague ${G.wave}. Les torpilles et les drones sont la priorité : abattez-les avant l'impact, et pensez aux tourelles de défense.`],
     pilot: ['Débriefing', 'Escadrille anéantie', `Vos ${G.diff.lives} vaisseaux ont été détruits pendant la vague ${G.wave}. Gardez de la vitesse, utilisez les leurres et revenez au hangar pour réparer.`],
     abandon: ['Sortie interrompue', 'Retour au briefing', `Vous avez quitté la sortie pendant la vague ${G.wave}.`],
     victory: ['Rapport de Contrôle Orion', 'Mission accomplie', `Orion-7 est sauvée. ${G.endless ? `Vous avez tenu jusqu'à la vague ${G.wave} en mode infini.` : 'Les dix vagues ont été repoussées.'}`],
   }[reason];
-  const data = { eyebrow: T[0], title: T[1], text: T[2], items: statItems(G, Math.round(station.hp / station.maxHp * 100)), medalList: medals(G), rank };
+  const data = { eyebrow: T[0], title: T[1], text: T[2], items: statItems(G, Math.round(station.hp / station.maxHp * 100)), medalList: medals(G), rank, credits };
   later(() => showOver(data), reason === 'station' ? 5200 : reason === 'pilot' ? 2000 : 0);
 }
 
@@ -176,6 +187,7 @@ function onAction(a) {
     case 'cycle': targetCycle(); break;
     case 'targetTorp': targetTorpedo(); break;
     case 'flare': fireFlares(); break;
+    case 'ability': useAbility(); break;
     case 'fa': p.fa = !p.fa; comms(p.fa ? 'Assistance de vol active : les propulseurs compensent la dérive.' : 'Assistance coupée : vol newtonien pur. Rien ne freine, la poussée est directe.', p.fa ? '' : 'warn', 'Ordinateur de bord'); sfx('beep'); break;
     case 'camera': G.camMode = G.camMode === 'chase' ? 'cockpit' : 'chase'; break;
     case 'radar': G.radarRange = G.radarRange === 2000 ? 5000 : G.radarRange === 5000 ? 12000 : 2000; sfx('beep'); break;
@@ -189,6 +201,7 @@ function applyMusic(x) { music.setIntensity(x); }
 function musicTarget() {
   const s = G.state;
   if (s === 'menu' || s === 'loading') return 0.05;
+  if (s === 'hangar') return 0.1;
   if (s === 'over') return 0.02;
   if (s === 'paused' || s === 'upgrade') return 0.12;
   if (!G.waveActive) return 0.18;
@@ -213,7 +226,7 @@ function step(h) {
   updateGates(h);
   updateWaves(h); updatePickups(h);
   updateBullets(h); updateMissiles(h);
-  updateCombo(h); updateTutorial(h);
+  updateCombo(h); updateTutorial(h); updateAbilities(h);
   G.hitMarkT -= h; G.killMarkT -= h; G.hurtT = Math.max(0, G.hurtT - h); G.shieldFxT = Math.max(0, G.shieldFxT - h);
   for (let i = G.dmgDirs.length - 1; i >= 0; i--) if ((G.dmgDirs[i].t -= h) <= 0) G.dmgDirs.splice(i, 1);
 }
@@ -240,7 +253,7 @@ function frame(now) {
   updateBackground(frozen ? 0 : rdt, R.camera);
   const flyingNow = G.state === 'flight' || G.state === 'launch';
   updateDust(R.camera.position, flyingNow ? player.vel : new THREE.Vector3());
-  if (G.state === 'menu') updateMenuShip(rdt, now / 1000); else updateShipVisuals(frozen ? 0 : fxDt, now / 1000);
+  if (G.state === 'menu') updateMenuShip(rdt, now / 1000); else if (G.state === 'hangar') updateHangarShip(now / 1000); else updateShipVisuals(frozen ? 0 : fxDt, now / 1000);
   const spdAmt = G.state === 'flight' && settings.shake > 0 ? Math.min(1, smooth(260, 720, player.vel.length()) * 0.85 + (player.boosting ? 0.25 : 0) + G.hurtT * 1.4) * (G.camMode === 'cockpit' ? 0.4 : 1) : 0;
   updatePostFx(SUN_DIR, spdAmt);
   updateSunShadow(G.state === 'dead' ? player.deathPos : player.pos);
@@ -255,5 +268,5 @@ function frame(now) {
   drawHUD();
 }
 
-if (import.meta.env.DEV) window.__orion = { G, player, station, startGame, endGame, setPause, R, damageHostile, damageStation, setGear, killPlayer, get boss() { return boss; } };
+if (import.meta.env.DEV) window.__orion = { G, player, station, startGame, endGame, setPause, R, damageHostile, damageStation, setGear, killPlayer, profile, useAbility, get boss() { return boss; } };
 boot();

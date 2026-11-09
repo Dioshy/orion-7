@@ -7,7 +7,7 @@ const A = { ctx: null, master: null, sfxBus: null, musicBus: null, noise: null, 
 export const audio = A;
 
 const RANGE = { flyby: 160, rockby: 200, gun: 1500, egun: 1800, flak: 2200, boom: 6000, bigboom: 12000, hit: 2500, spark: 900, missile: 1800, emissile: 3000, torp: 4000, deflect: 1500, pd: 2500 };
-const LIMIT = { rcs: 0.075, gun: 0.03, egun: 0.035, flak: 0.05, hit: 0.03, spark: 0.025, boom: 0.06, deflect: 0.05, pd: 0.05, kill: 0.04 };
+const LIMIT = { laser: 0.09, plasmaHit: 0.04, rcs: 0.075, gun: 0.03, egun: 0.035, flak: 0.05, hit: 0.03, spark: 0.025, boom: 0.06, deflect: 0.05, pd: 0.05, kill: 0.04 };
 
 export function audioInit() {
   if (A.ctx) { if (A.ctx.state === 'suspended') A.ctx.resume(); return; }
@@ -121,6 +121,15 @@ export function sfx(type, vol = 1, pos = null, arg = 0) {
     case 'flyby': noise(0.75, 'bandpass', 2400, 260, 0.45, 1.6); tone(0.6, 'sawtooth', 420, 140, 0.035); break;
     case 'boostOn': noise(0.9, 'bandpass', 180, 1400, 0.6, 1.2); tone(0.5, 'sine', 70, 160, 0.25); break;
     case 'retroOn': noise(0.7, 'bandpass', 1600, 220, 0.55, 1.2); tone(0.45, 'sine', 160, 60, 0.22); break;
+    case 'laser': tone(0.13, 'sawtooth', 880, 860, 0.025); tone(0.13, 'sine', 1760, 1700, 0.02); noise(0.12, 'bandpass', 5200, 4800, 0.03, 4); break;
+    case 'plasma': tone(0.25, 'square', 320, 90, 0.07); noise(0.2, 'bandpass', 900, 200, 0.25, 1.2); break;
+    case 'plasmaHit': noise(0.5, 'lowpass', 1600, 120, 0.5); tone(0.3, 'sine', 240, 60, 0.15); break;
+    case 'aegis': [392, 587, 784].forEach((f, i) => tone(0.6, 'sine', f, f * 1.01, 0.08, i * 0.05)); noise(0.6, 'highpass', 3000, 6000, 0.08); break;
+    case 'emp': tone(1.2, 'sawtooth', 1200, 40, 0.12); noise(1.2, 'lowpass', 3000, 60, 0.7); break;
+    case 'blink': tone(0.35, 'sine', 200, 2400, 0.12); noise(0.4, 'bandpass', 600, 5000, 0.3, 2); break;
+    case 'wingman': [523, 659, 880].forEach((f, i) => tone(0.25, 'triangle', f, f, 0.08, i * 0.08)); break;
+    case 'buy': [660, 880, 1320].forEach((f, i) => tone(0.18, 'triangle', f, f, 0.1, i * 0.06)); break;
+    case 'deny': tone(0.2, 'square', 200, 150, 0.06); break;
     case 'rcs': noise(0.09, 'highpass', 3500, 2200, 0.09, 0.7); break;
     case 'rockby': noise(0.6, 'lowpass', 900, 120, 0.4, 0.9); break;
   }

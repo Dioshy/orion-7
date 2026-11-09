@@ -18,6 +18,16 @@ La version d'origine (fichier unique) est conservée dans `legacy/index.html`.
 
 ## Contenu
 
+- **Hangar** avant chaque sortie : le vaisseau est présenté sur le pont, on choisit son équipement
+  et on dépense les **crédits** gagnés à chaque sortie (score et vagues repoussées). Tout est sauvegardé.
+  - **3 vaisseaux** : Orion Mk II (polyvalent), Vipère (intercepteur rapide et fragile, un réacteur,
+    plans canard), Rempart (canonnière lourde à double poutre, quatre réacteurs, trois canons, dix missiles).
+  - **3 armes** : canons cinétiques, lasers à impulsions (rayons instantanés), canon à plasma (explosions de zone).
+  - **4 capacités** (touche Z / W en AZERTY) : Égide (invulnérabilité), Onde IEM (détruit missiles et
+    torpilles, paralyse les ennemis), Saut de phase (bond de 700 m), Drone ailier (allié pendant 25 s).
+  - **3 propulsions** : postcombustion, propulseur à impulsions (3 charges), réacteur à fusion (endurance).
+  - **5 livrées**.
+
 - **Deux vues** (V) : poursuite, ou cockpit 3D modélisé (verrière, planche de bord, manche latéral et
   manette des gaz animés, écrans multifonctions en direct : radar, systèmes, cible ; voyants dont le
   train d'atterrissage).

@@ -59,7 +59,8 @@ function updatePartPositions() {
 export function updateBoss(dt) {
   const b = boss; if (!b) return;
   if (b.dying) { updateDying(dt); return; }
-  const pl = player.alive && G.state === 'flight';
+  if (b.stunT > 0) b.stunT -= dt;
+  const pl = player.alive && G.state === 'flight' && !(b.stunT > 0);
   const engAlive = b.parts.filter(p => p.sub === 'engine' && !p.dead).length;
   b.speedK = engAlive === 2 ? 1 : engAlive === 1 ? 0.55 : 0.15;
   // déplacement : approche puis orbite lente autour de la station
@@ -92,7 +93,7 @@ export function updateBoss(dt) {
   }
   // chasseurs et torpilles lourdes
   b.fighterT -= dt; b.torpT -= dt;
-  if (b.fighterT <= 0) {
+  if (b.fighterT <= 0 && !(b.stunT > 0)) {
     b.fighterT = rand(20, 26) / G.diff.aggr;
     if (G.enemies.filter(e => e.kind === 'fighter').length < 8) {
       for (const s of [-1, 1]) {

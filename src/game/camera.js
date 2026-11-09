@@ -10,6 +10,10 @@ import { updateCockpit, EYE } from '../render/cockpit.js';
 const CHASE = new THREE.Vector3(0, 5.4, 25), COCKPIT = new THREE.Vector3(0, 0.95, -2.6);
 const camQ = new THREE.Quaternion(), _v = new THREE.Vector3(), _w = new THREE.Vector3();
 let orbitA = 0, lag = new THREE.Vector3(), push = 0, bodyVisible = true;
+const _e2 = new THREE.Vector3();
+let snapNext = false;
+/** La prochaine image place la caméra directement (sans glisser à travers la coque). */
+export function snapCamera() { snapNext = true; }
 const head = new THREE.Vector3(), headQ = new THREE.Quaternion(), _e = new THREE.Euler(), _iq = new THREE.Quaternion();
 import { CK } from '../render/cockpit.js';
 function ckShake(v) { CK.camera.position.add(v); }
@@ -36,6 +40,13 @@ export function updateCamera(rdt, dt) {
   let fov = settings.fov;
   if (import.meta.env.DEV && st === 'studio' && window.__orion?.studio) { // vue d'atelier (développement)
     const v = window.__orion.studio; cam.position.set(v.x, v.y, v.z); cam.lookAt(p.pos); cam.fov = 38; cam.updateProjectionMatrix(); return;
+  }
+  if (st === 'hangar') {
+    const a = performance.now() * 0.00016, r = p.obj.userData.shipId === 'rempart' ? 18 : 15.5;
+    _v.set(Math.sin(a) * r, 4.5 + Math.sin(a * 0.7) * 1.5, Math.cos(a) * r).add(p.pos);
+    if (snapNext) { cam.position.copy(_v); cam.fov = 50; snapNext = false; } else cam.position.lerp(_v, 1 - Math.exp(-(rdt || 0.016) * 3));
+    cam.lookAt(_w.copy(p.pos).add(_e2.set(0, 0.6, 0))); fov = 50;
+    cam.fov = damp(cam.fov, fov, 3, rdt || 0.016); cam.updateProjectionMatrix(); updateCockpit(false); return;
   }
   if (st === 'menu' || st === 'loading') {
     const now = performance.now() / 1000, shot = Math.floor(now / 12) % 3;

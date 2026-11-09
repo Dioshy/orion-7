@@ -6,7 +6,7 @@ import { G } from './state.js';
 import { player, damagePlayer } from './player.js';
 import { stationCollide, stationNormal, damageStation } from './station.js';
 import { spawnBullet, launchTorpedo, launchEnemyMissile, destroyTorpedo, destroyEnemyMissile, stationAimPoint } from './weapons.js';
-import { explode, engineTrail, smokePuff, firePuff, wreck } from './effects.js';
+import { explode, engineTrail, smokePuff, firePuff, wreck, sparks } from './effects.js';
 import { registerKill } from './score.js';
 import { maybeDrop } from './pickups.js';
 import { boss, damagePart, damageBossHull } from './boss.js';
@@ -83,6 +83,11 @@ export function updateEnemies(dt) {
   const cam = R.camera.position;
   for (const e of G.enemies) {
     if (e.dead) continue;
+    if (e.stunT > 0) { // paralysé par l'onde IEM : dérive en tournoyant, arcs électriques
+      e.stunT -= dt; e.pos.addScaledVector(e.vel, dt); e.vel.multiplyScalar(1 - 0.3 * dt); e.obj.rotateZ(dt * 1.6);
+      if (Math.random() < dt * 14) sparks(e.pos, e.vel, 0x8fdcff, 3, 30, 0.45);
+      continue;
+    }
     e.fireCd -= dt; e.stateT -= dt; e.aggro -= dt; e.missileCd -= dt; e.flybyT -= dt;
     if (e.flashing && (e.flashT -= dt) <= 0) { e.flashing = false; for (const [m, mat] of e.meshes) m.material = mat; }
     const dPl = pl ? e.pos.distanceTo(player.pos) : Infinity;

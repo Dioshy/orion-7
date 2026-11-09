@@ -44,6 +44,30 @@
   </div>
 </div>
 
+<!-- Hangar : choix du vaisseau et de l'équipement -->
+<div id="hangar" class="overlay hangar" hidden>
+  <div class="hg-top">
+    <div><div class="eyebrow">Hangar 1 · Station Orion-7</div><h2>Préparation de la sortie</h2></div>
+    <div class="credits"><span>Crédits</span><b id="hgCredits">0</b></div>
+  </div>
+  <div class="hg-left card">
+    <div class="eyebrow">Vaisseau</div>
+    <div id="hgShips" class="opts"></div>
+    <div id="hgStats" class="hg-stats"></div>
+  </div>
+  <div class="hg-right card">
+    <div class="eyebrow">Arme principale</div><div id="hgWeapon" class="opts"></div>
+    <div class="eyebrow">Capacité spéciale · touche <kbd id="hgAbKey">W</kbd></div><div id="hgAbility" class="opts"></div>
+    <div class="eyebrow">Propulsion · <kbd>Maj</kbd></div><div id="hgBoost" class="opts"></div>
+    <div class="eyebrow">Livrée</div><div id="hgPaint" class="swatches"></div>
+  </div>
+  <div class="hg-bottom">
+    <button id="hgBack" class="ghost" type="button">Retour</button>
+    <span class="note" id="hgNote">Les crédits se gagnent à chaque sortie (score et vagues repoussées).</span>
+    <button id="hgLaunch" type="button">Lancer la sortie</button>
+  </div>
+</div>
+
 <!-- Paramètres -->
 <div id="settings" class="overlay" hidden>
   <div class="card" style="max-width:640px">
@@ -124,6 +148,7 @@
     <p class="brief" id="overText"></p>
     <div class="record" id="overRecord" hidden></div>
     <div class="stats" id="overStats"></div>
+    <div class="record" id="overCredits" style="color:var(--friend)"></div>
     <div class="medals" id="overMedals"></div>
     <div class="row">
       <button id="btnAgain" type="button">Nouvelle sortie</button>

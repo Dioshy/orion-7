@@ -33,8 +33,19 @@ class Tracers {
 }
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _s = new THREE.Vector3(), _v = new THREE.Vector3();
 let TR = null;
+const BEAMS = [];
 export function initWeapons() {
-  TR = { p: new Tracers(700, 0xffe0a0, 4, 0.32, 13), g: new Tracers(400, 0xffc040, 6, 0.42, 16), e: new Tracers(700, 0xff4a30, 4, 0.36, 10), pd: new Tracers(300, 0x8fdcff, 4, 0.3, 9) };
+  TR = { p: new Tracers(700, 0xffe0a0, 4, 0.32, 13), g: new Tracers(400, 0xffc040, 6, 0.42, 16), e: new Tracers(700, 0xff4a30, 4, 0.36, 10), pd: new Tracers(300, 0x8fdcff, 4, 0.3, 9),
+    pl: new Tracers(200, 0x7dffb0, 5, 1.5, 3.2), w: new Tracers(300, 0x8fdcff, 4, 0.3, 11) };
+  // rayons laser (jusqu'à 3) : gaine lumineuse + cœur blanc
+  const outer = new THREE.CylinderGeometry(0.22, 0.22, 1, 10, 1, true), core = new THREE.CylinderGeometry(0.07, 0.07, 1, 8, 1, true);
+  for (let i = 0; i < 3; i++) {
+    const g = new THREE.Group();
+    const mo = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3ad0ff).multiplyScalar(3), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.8 });
+    g.add(new THREE.Mesh(outer, mo), new THREE.Mesh(core, new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(5), blending: THREE.AdditiveBlending, transparent: true, depthWrite: false })));
+    g.visible = false; g.frustumCulled = false; g.children.forEach(c => { c.frustumCulled = false; });
+    R.scene.add(g); BEAMS.push({ g, mo });
+  }
 }
 
 /* ---------- Obus ---------- */
@@ -59,7 +70,7 @@ export function updateBullets(dt) {
         if (segSphere(b.prev, b.pos, h.pos, h.radius)) {
           hit = true;
           if (b.team === 'p') { G.stats.hits++; G.hitMarkT = 0.12; }
-          sparks(b.pos, h.vel, b.gold ? 0xffc040 : 0xffe2a0, 7, 50, 0.5); sfx('spark', 0.5, b.pos);
+          if (!b.plasma) { sparks(b.pos, h.vel, b.gold ? 0xffc040 : 0xffe2a0, 7, 50, 0.5); sfx('spark', 0.5, b.pos); }
           damageHostile(h, b.dmg, b.team === 'pd' ? 'pd' : 'gun', b.pos);
           break;
         }
@@ -71,13 +82,15 @@ export function updateBullets(dt) {
       hit = true; if (b.team === 'e') damageStation(0.8 * G.diff.enemyDmg);
       sparks(b.pos, ZERO, b.team === 'e' ? 0xff7050 : 0xffe2a0, 5, 30, 0.6);
     }
-    if (hit || b.life <= 0) { bullets[i] = bullets[bullets.length - 1]; bullets.pop(); pool.push(b); }
+    if (b.plasma && (hit || b.life <= 0)) plasmaBurst(b, hit);
+    if (hit || b.life <= 0) { bullets[i] = bullets[bullets.length - 1]; bullets.pop(); b.plasma = false; pool.push(b); }
   }
 }
 export function syncTracers() {
+  if (G.state !== 'flight' && G.state !== 'paused') for (const B of BEAMS) B.g.visible = false;
   for (const k in TR) TR[k].begin();
   const cp = R.camera.position;
-  for (const b of bullets) TR[b.team === 'p' ? (b.gold ? 'g' : 'p') : b.team].push(b, cp);
+  for (const b of bullets) TR[b.team === 'p' ? (b.plasma ? 'pl' : b.gold ? 'g' : 'p') : b.team].push(b, cp);
   for (const k in TR) TR[k].end();
 }
 
@@ -247,3 +260,54 @@ export function clearProjectiles() {
   G.missiles = []; G.eMissiles = []; G.torps = []; G.flares = [];
   syncTracers();
 }
+
+/* ---------- Plasma : explosion de zone ---------- */
+function plasmaBurst(b, direct) {
+  explode(b.pos, ZERO, direct ? 9 : 6, { color: 0x6dff9a, ring: true, light: true, sound: false });
+  sfx('plasmaHit', 0.8, b.pos);
+  for (const h of G.targets.slice()) {
+    if (h.dead || h.kind === 'boss') continue;
+    const d = h.pos.distanceTo(b.pos); if (d < 26 + h.radius) damageHostile(h, b.dmg * (d < 10 + h.radius ? 0.8 : 0.45), 'gun', h.pos);
+  }
+}
+
+/* ---------- Lasers : rayons instantanés à dégâts continus ---------- */
+const _o = new THREE.Vector3(), _dir = new THREE.Vector3(), _conv = new THREE.Vector3(), _hp = new THREE.Vector3(), _end = new THREE.Vector3(), _yq = new THREE.Vector3(0, 1, 0);
+export let laserActive = false;
+let laserTick = 0, laserSnd = 0;
+export function updateLaser(dt, on) {
+  const p = player, S = p.S; laserActive = on;
+  for (const B of BEAMS) B.g.visible = false;
+  if (!on || !p.alive) return;
+  const od = p.odT > 0, q = p.obj.quaternion, guns = p.obj.userData.guns, n = Math.min(3, S.guns), MAX = 1700;
+  fwdOf(p.obj, _f2); _conv.copy(p.pos).addScaledVector(_f2, 700);
+  let anyHit = false;
+  for (let i = 0; i < n; i++) {
+    _o.copy(guns[i]).applyQuaternion(q).add(p.pos);
+    _dir.copy(_conv).sub(_o).normalize();
+    let best = MAX, target = null;
+    for (const h of G.targets) {
+      if (h.dead) continue;
+      if (h.kind === 'boss') { if (bossSegHit(_o, _end.copy(_o).addScaledVector(_dir, MAX))) { const d = Math.max(5, h.pos.distanceTo(_o) - 60); if (d < best) { best = d; target = h; } } continue; }
+      _hp.copy(h.pos).sub(_o); const t = _hp.dot(_dir); if (t < 0 || t > best) continue;
+      const c2 = _hp.lengthSq() - t * t, r = h.radius + 1;
+      if (c2 < r * r) { const d = t - Math.sqrt(r * r - c2); if (d < best) { best = Math.max(0, d); target = h; } }
+    }
+    if (target) {
+      anyHit = true;
+      _hp.copy(_o).addScaledVector(_dir, best);
+      damageHostile(target, S.gunDmg * (od ? 1.5 : 1) * dt / 2, 'gun', _hp);
+      if (Math.random() < dt * 40) sparks(_hp, target.vel, od ? 0xffc040 : 0x8fe8ff, 5, 60, 0.45);
+      G.hitMarkT = 0.08;
+    }
+    const B = BEAMS[i], w = 0.8 + Math.random() * 0.5;
+    B.g.visible = true; B.g.position.copy(_o).addScaledVector(_dir, best / 2);
+    B.g.quaternion.setFromUnitVectors(_yq, _dir); B.g.scale.set(w, best, w);
+    B.mo.color.set(od ? 0xffc040 : 0x3ad0ff).multiplyScalar(3);
+    if (Math.random() < dt * 30) fire.emit(_o.x, _o.y, _o.z, p.vel.x, p.vel.y, p.vel.z, 0.06, 1.6, 2.4, 1.2, 2.6, 3.2, 0.3, 0.6, 1, 1, 0);
+  }
+  // précision : on compte des « tirs » à cadence fixe pendant que le rayon est actif
+  laserTick += dt; while (laserTick >= 1 / 14) { laserTick -= 1 / 14; G.stats.shots++; if (anyHit) G.stats.hits++; }
+  laserSnd -= dt; if (laserSnd <= 0) { laserSnd = 0.11; sfx('laser', 0.6); }
+}
+const _f2 = new THREE.Vector3();

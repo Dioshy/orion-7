@@ -1,7 +1,9 @@
 // Vaisseau du joueur : départ au sol sur le pont d'envol, pilotage newtonien avec assistance, armes, ravitaillement.
 import * as THREE from 'three';
 import { R } from '../render/renderer.js';
-import { buildPlayerShip, setGear, animateShip, GEAR_HEIGHT } from '../render/ship.js';
+import { buildShip, setPaint, setGear, animateShip, GEAR_HEIGHT } from '../render/ship.js';
+import { ship as shipDef, current, PAINTS } from './loadout.js';
+import { updateLaser, laserActive } from './weapons.js';
 import { G } from './state.js';
 import { input, getStick, padHeld, rumble, neutralStick } from '../core/input.js';
 import { settings } from '../core/settings.js';
@@ -27,20 +29,26 @@ export const player = {
 };
 
 export function refreshStats() {
-  const u = G.up, n = k => u[k] || 0;
+  const u = G.up, n = k => u[k] || 0, sh = shipDef(), lo = current();
+  const dmgK = Math.pow(1.2, n('dmg')), coolK = Math.pow(0.75, n('cool')), rofK = 1 + 0.15 * n('rof');
+  const W = { cannon: { dmg: 12, heat: 3.1, cd: 0.072 }, plasma: { dmg: 46, heat: 12, cd: 0.32 }, laser: { dmg: 110, heat: 34, cd: 0 } }[lo.weapon] || { dmg: 12, heat: 3.1, cd: 0.072 };
+  const B = { afterburner: { speed: 720, acc: 330, drain: 22 }, fusion: { speed: 570, acc: 250, drain: 6 }, dash: { speed: 720, acc: 330, drain: 0 } }[lo.boost] || { speed: 720, acc: 330, drain: 22 };
   player.S = {
-    maxHull: 100 + 25 * n('hull'), maxShield: 100 + 25 * n('shield'), shieldRegen: 7 * (1 + 0.4 * n('shield')), shieldDelay: 3.5 - 0.5 * n('shield'),
-    gunDmg: 12 * Math.pow(1.2, n('dmg')), heat: 3.1 * Math.pow(0.75, n('cool')), fireCd: 0.072 / (1 + 0.15 * n('rof')), guns: n('gun3') ? 3 : 2,
-    maxMissiles: 6 + 2 * n('missiles'), lockTime: 1.3 * Math.pow(0.65, n('lock')), splash: 1 + 0.4 * n('splash'), salvo: n('salvo') > 0,
-    maxBoost: 100 * (1 + 0.35 * n('boost')), boostRegen: 9 * (1 + 0.3 * n('boost')), agility: 1 + 0.15 * n('agility'),
-    magnet: n('magnet') ? 380 : 0, maxFlares: 4 + 2 * n('flares'), regen: 1.4 * n('regen'),
+    weapon: lo.weapon, boostType: lo.boost, ability: lo.ability, speed: sh.speed,
+    maxHull: sh.hull + 25 * n('hull'), maxShield: sh.shield + 25 * n('shield'), shieldRegen: 7 * (1 + 0.4 * n('shield')), shieldDelay: 3.5 - 0.5 * n('shield'),
+    gunDmg: W.dmg * dmgK, heat: W.heat * coolK, fireCd: W.cd / rofK, guns: Math.max(sh.guns, n('gun3') ? 3 : 2),
+    maxMissiles: sh.missiles + 2 * n('missiles'), lockTime: 1.3 * Math.pow(0.65, n('lock')), splash: 1 + 0.4 * n('splash'), salvo: n('salvo') > 0,
+    maxBoost: 100 * sh.boost * (1 + 0.35 * n('boost')), boostRegen: 9 * (1 + 0.3 * n('boost')), agility: sh.agility * (1 + 0.15 * n('agility')),
+    boostSpeed: B.speed * sh.speed, boostAcc: B.acc, boostDrain: B.drain,
+    magnet: n('magnet') ? 380 : 0, maxFlares: sh.flares + 2 * n('flares'), regen: 1.4 * n('regen'),
   };
 }
 refreshStats();
 
 let landingLight = null, muzzleLight = null;
 export function initPlayer() {
-  player.obj = buildPlayerShip(); player.pos = player.obj.position; player.obj.visible = false; R.scene.add(player.obj);
+  const lo = current(), pt = PAINTS[lo.paint] || PAINTS.orion; setPaint(pt.hull, pt.accent);
+  player.obj = buildShip(lo.ship); player.obj.userData.shipId = lo.ship; player.pos = player.obj.position; player.obj.visible = false; R.scene.add(player.obj);
   const bubble = new THREE.Mesh(new THREE.SphereGeometry(9, 32, 16), new THREE.ShaderMaterial({
     uniforms: { hit: { value: 0 }, dir: { value: new THREE.Vector3(0, 0, -1) } },
     vertexShader: `varying vec3 vN; varying vec3 vV; varying vec3 vL; void main(){ vec4 wp = modelMatrix*vec4(position,1.0); vN = normalize(mat3(modelMatrix)*normal); vV = cameraPosition-wp.xyz; vL = normalize(position); gl_Position = projectionMatrix*viewMatrix*wp; }`,
@@ -55,6 +63,18 @@ export function initPlayer() {
   landingLight.position.set(0, -1.2, -6); landingLight.target.position.set(0, -12, -60);
   player.obj.add(landingLight, landingLight.target);
   muzzleLight = new THREE.PointLight(0xffd08a, 0, 40, 2); muzzleLight.position.set(0, 0, -6); player.obj.add(muzzleLight);
+}
+
+/** Change de vaisseau et/ou de livrée (hangar) : reconstruit le modèle et y raccroche bulle et lumières. */
+export function applyLoadout() {
+  const lo = current(), pt = PAINTS[lo.paint] || PAINTS.orion; setPaint(pt.hull, pt.accent);
+  refreshStats();
+  if (player.obj.userData.shipId === lo.ship) return;
+  const old = player.obj, nw = buildShip(lo.ship); nw.userData.shipId = lo.ship;
+  nw.position.copy(old.position); nw.quaternion.copy(old.quaternion); nw.visible = old.visible;
+  nw.add(player.bubble, landingLight, landingLight.target, muzzleLight);
+  R.scene.remove(old); R.scene.add(nw);
+  player.obj = nw; player.pos = nw.position; player.gear = 1; setGear(nw, 1, 0.3);
 }
 
 export function resetPlayerForGame() {
@@ -87,11 +107,12 @@ function emitEngines(dt, power, boost) {
   const p = player, q = p.obj.quaternion, engines = p.obj.userData.engines;
   fwdOf(p.obj, _back).negate();
   const step = boost ? 1.6 : 2.4;
+  while (prevNoz.length < engines.length) prevNoz.push(new THREE.Vector3());
   engines.forEach((en, j) => {
     _w.copy(en).applyQuaternion(q).add(p.pos);
     const prev = prevNoz[j], d = prevNozOk ? prev.distanceTo(_w) : 0;
     if (!prevNozOk || d > 80) prev.copy(_w);
-    const n = Math.min(40, Math.max(1, Math.ceil(Math.max(d / step, dt * (25 + power * 35)) * R.fxScale)));
+    const n = Math.min(40 / Math.max(1, engines.length / 2), Math.max(1, Math.ceil(Math.max(d / step, dt * (25 + power * 35)) * R.fxScale)));
     for (let i = 0; i < n; i++) {
       _np.lerpVectors(prev, _w, (i + Math.random()) / n);
       engineTrail(_np, _back, p.vel, boost ? 0.9 : 0.45, boost ? 1.1 : 0.7, 1.7, power, boost ? 0.7 : 0.45, boost ? 1.3 : 1);
@@ -160,28 +181,47 @@ export function updatePlayer(dt) {
   const wantBoost = k.ShiftLeft || k.ShiftRight || (padOn && padHeld(5));
   const thrUp = k.KeyW || (padOn && ax.ry < -0.3), thrDn = k.KeyS || (padOn && ax.ry > 0.3);
   // postcombustion inversée : Maj + S → rétrofusées à pleine puissance (freinage brutal, marche arrière)
-  const retroBoost = wantBoost && thrDn && p.boost > 1;
-  const boosting = wantBoost && !thrDn && p.boost > 1;
-  if (boosting && !p.boosting) { sfx('boostOn'); G.fovKick = Math.max(G.fovKick || 0, 7); addShake(0.25); rumble(0.5, 0.8, 300); fwdOf(p.obj, _back).negate(); shockwave(_w.copy(p.pos).addScaledVector(_back, 9), 30, 0x9cc8ff, 0.4); }
-  if (retroBoost && !p.retroBoosting) { sfx('retroOn'); G.fovKick = Math.min(G.fovKick || 0, -5); addShake(0.3); rumble(0.8, 0.4, 300); }
-  p.retroBoosting = retroBoost; p.boosting = boosting;
-  if (boosting || retroBoost) p.boost = Math.max(0, p.boost - (retroBoost ? 26 : 22) * dt); else p.boost = Math.min(S.maxBoost, p.boost + S.boostRegen * dt);
+  let retroBoost = wantBoost && thrDn && p.boost > 1;
+  let boosting = wantBoost && !thrDn && p.boost > 1;
+  let dashKick = 0;
+  if (S.boostType === 'dash') {
+    // propulseur à impulsions : un appui = un bond de vitesse (avant, ou freinage avec S)
+    p.dashCharges = Math.min(3, (p.dashCharges ?? 3) + dt / 3.5);
+    if (wantBoost && !p.prevWant && p.dashCharges >= 1) {
+      p.dashCharges -= 1; dashKick = thrDn ? 1 : -1; p.dashT = 0.9; p.dashDir = dashKick;
+      sfx(thrDn ? 'retroOn' : 'boostOn'); G.fovKick = thrDn ? -6 : 9; addShake(0.35); rumble(0.7, 0.9, 260);
+      fwdOf(p.obj, _back).negate(); shockwave(_w.copy(p.pos).addScaledVector(_back, thrDn ? -9 : 9), 34, 0x9cc8ff, 0.4);
+    }
+    p.dashT = Math.max(0, (p.dashT || 0) - dt);
+    boosting = p.dashT > 0 && p.dashDir < 0; retroBoost = p.dashT > 0 && p.dashDir > 0;
+    p.boost = p.dashCharges / 3 * S.maxBoost;
+    p.boosting = boosting; p.retroBoosting = retroBoost;
+  }
+  p.prevWant = wantBoost;
+  if (S.boostType !== 'dash' && boosting && !p.boosting) { sfx('boostOn'); G.fovKick = Math.max(G.fovKick || 0, 7); addShake(0.25); rumble(0.5, 0.8, 300); fwdOf(p.obj, _back).negate(); shockwave(_w.copy(p.pos).addScaledVector(_back, 9), 30, 0x9cc8ff, 0.4); }
+  if (S.boostType !== 'dash') {
+    if (retroBoost && !p.retroBoosting) { sfx('retroOn'); G.fovKick = Math.min(G.fovKick || 0, -5); addShake(0.3); rumble(0.8, 0.4, 300); }
+    p.retroBoosting = retroBoost; p.boosting = boosting;
+    if (boosting || retroBoost) p.boost = Math.max(0, p.boost - (retroBoost ? S.boostDrain * 1.2 : S.boostDrain) * dt); else p.boost = Math.min(S.maxBoost, p.boost + S.boostRegen * dt);
+  }
   let sx = (k.KeyD ? 1 : 0) - (k.KeyA ? 1 : 0), sy = (k.KeyR ? 1 : 0) - (k.KeyF ? 1 : 0);
   if (padOn) { sx += (padHeld(15) ? 1 : 0) - (padHeld(14) ? 1 : 0); sy += (padHeld(12) ? 1 : 0) - (padHeld(13) ? 1 : 0); }
   sx = clamp(sx, -1, 1); sy = clamp(sy, -1, 1);
   _iq.copy(q).invert(); _lv.copy(p.vel).applyQuaternion(_iq);
-  const main = boosting ? SPD.boostAcc : SPD.main, retro = retroBoost ? SPD.retroBoost : SPD.retro, lat = SPD.lat;
+  const cruise = SPD.cruise * S.speed, dashing = S.boostType === 'dash' && p.dashT > 0;
+  const main = (boosting ? S.boostAcc : SPD.main) * (0.85 + 0.15 * S.speed), retro = retroBoost ? SPD.retroBoost : SPD.retro, lat = SPD.lat * S.agility;
+  if (dashKick) _lv.z += dashKick * 300;
   let thrustMag = 0, retroMag = 0;
   if (p.fa) {
     const rate = padOn && (ax.ry < -0.3 || ax.ry > 0.3) ? 0.7 * Math.abs(ax.ry) : 0.7;
     if (thrUp) p.throttle = Math.min(1, p.throttle + rate * dt);
     if (thrDn) p.throttle = Math.max(0, p.throttle - rate * 1.6 * dt);
-    const tz = boosting ? -SPD.boost : retroBoost ? SPD.reverseMax : -p.throttle * SPD.cruise, tx = sx * SPD.latMax, ty = sy * SPD.latMax;
+    const tz = dashing ? _lv.z : boosting ? -S.boostSpeed : retroBoost ? SPD.reverseMax : -p.throttle * cruise, tx = sx * SPD.latMax, ty = sy * SPD.latMax;
     const dx = clamp(tx - _lv.x, -lat * dt, lat * dt), dy = clamp(ty - _lv.y, -lat * dt, lat * dt);
     const dzv = tz - _lv.z, dzz = dzv < 0 ? Math.max(dzv, -main * dt) : Math.min(dzv, retro * dt);
     _lv.x += dx; _lv.y += dy; _lv.z += dzz;
     thrustMag = dzz < 0 ? -dzz / (main * dt) : 0; retroMag = dzz > 0 ? dzz / (retro * dt) * (retroBoost ? 1.4 : 0.8) : 0;
-    thrustMag = Math.max(thrustMag, -_lv.z / SPD.cruise * 0.35);
+    thrustMag = Math.max(thrustMag, -_lv.z / cruise * 0.35, dashing && p.dashDir < 0 ? 1.4 : 0);
   } else {
     if (thrUp || boosting) { _lv.z -= main * dt; thrustMag = boosting ? 1.6 : 1; }
     if (thrDn) { _lv.z += retro * dt; retroMag = retroBoost ? 1.4 : 0.8; }
@@ -222,7 +262,11 @@ export function updatePlayer(dt) {
   p.fireCd -= dt; p.missileCd -= dt; p.flareCd -= dt; p.invulnT -= dt; p.hitT += dt; p.noMissileT -= dt;
   if (p.odT > 0) p.odT -= dt;
   const trigger = input.mouse.l || k.Space || (padOn && ax.rt > 0.3);
-  if (trigger && !p.overheat && p.ammo > 0 && p.fireCd <= 0) fireGuns();
+  if (S.weapon === 'laser') {
+    const on = trigger && !p.overheat;
+    updateLaser(dt, on);
+    if (on && p.odT <= 0) p.heat += S.heat * dt * (S.guns > 2 ? 1.25 : 1);
+  } else if (trigger && !p.overheat && p.ammo > 0 && p.fireCd <= 0) fireGuns();
   p.heat = Math.max(0, p.heat - 24 * dt);
   if (p.heat >= 100 && !p.overheat) { p.overheat = true; comms('Canons en surchauffe : refroidissement.', 'warn', 'Ordinateur de bord'); sfx('alarm', 0.5); }
   if (p.overheat && p.heat < 35) p.overheat = false;
@@ -273,7 +317,7 @@ export function updateShipVisuals(dt, time) {
     setGear(p.obj, p.gear, 0);
   }
   landingLight.intensity = p.gear > 0.9 ? 700 : 0;
-  animateShip(p.obj, { power: p.vis.power, boost: p.vis.boost, retro: p.vis.retro, rcs: p.vis.rcs, time, missiles: Math.min(4, p.missiles) });
+  animateShip(p.obj, { power: p.vis.power, boost: p.vis.boost, retro: p.vis.retro, rcs: p.vis.rcs, time, missiles: Math.min(p.obj.userData.parts.missiles.length, p.missiles) });
   // bouffées des propulseurs d'attitude
   if (dt > 0 && G.state === 'flight') {
     const dirs = p.obj.userData.rcsDirs, parts = p.obj.userData.parts.rcs;
@@ -287,22 +331,25 @@ export function updateShipVisuals(dt, time) {
 }
 
 function fireGuns() {
-  const p = player, S = p.S, f = fwdOf(p.obj, _f), od = p.odT > 0, q = p.obj.quaternion, guns = p.obj.userData.guns;
-  const shots = S.guns === 3 ? [p.gunIdx, 2] : [p.gunIdx];
+  const p = player, S = p.S, f = fwdOf(p.obj, _f), od = p.odT > 0, q = p.obj.quaternion, guns = p.obj.userData.guns, plasma = S.weapon === 'plasma';
+  const shots = S.guns >= 3 ? [p.gunIdx, 2] : [p.gunIdx];
   p.gunIdx = 1 - p.gunIdx;
-  _to.copy(p.pos).addScaledVector(f, 650); // convergence à 650 m
+  _to.copy(p.pos).addScaledVector(f, plasma ? 500 : 650); // convergence
   for (const gi of shots) {
     const m = _w.copy(guns[gi]).applyQuaternion(q).add(p.pos);
     const dir = _v.copy(_to).sub(m).normalize();
-    dir.x += rand(-0.002, 0.002); dir.y += rand(-0.002, 0.002); dir.z += rand(-0.002, 0.002); dir.normalize();
-    spawnBullet('p', m, _back.copy(p.vel).addScaledVector(dir, 1100), S.gunDmg * (od ? 1.5 : 1), od);
-    fire.emit(m.x, m.y, m.z, p.vel.x + dir.x * 40, p.vel.y + dir.y * 40, p.vel.z + dir.z * 40, 0.06, 2.6, 4, 4, 3, 1.6, 2, 1, 0.3, 1, 0);
-    p.ammo--; G.stats.shots++;
+    const sp = plasma ? 0.001 : 0.002;
+    dir.x += rand(-sp, sp); dir.y += rand(-sp, sp); dir.z += rand(-sp, sp); dir.normalize();
+    const b = spawnBullet('p', m, _back.copy(p.vel).addScaledVector(dir, plasma ? 760 : 1100), S.gunDmg * (od ? 1.5 : 1), od);
+    if (plasma) { b.plasma = true; b.life = 3.2; fire.emit(m.x, m.y, m.z, p.vel.x + dir.x * 30, p.vel.y + dir.y * 30, p.vel.z + dir.z * 30, 0.12, 4, 6, 1.2, 3, 1.8, 0.4, 1.2, 0.6, 1, 0); }
+    else fire.emit(m.x, m.y, m.z, p.vel.x + dir.x * 40, p.vel.y + dir.y * 40, p.vel.z + dir.z * 40, 0.06, 2.6, 4, 4, 3, 1.6, 2, 1, 0.3, 1, 0);
+    if (!plasma) p.ammo--; G.stats.shots++;
     if (!od) p.heat += S.heat * (shots.length > 1 ? 0.7 : 1);
   }
   p.fireCd = S.fireCd * (od ? 0.65 : 1);
-  sfx(od ? 'gunOD' : 'gun', 0.7);
-  muzzleLight.intensity = od ? 900 : 600; G.recoil = Math.min(0.5, (G.recoil || 0) + 0.12); rumble(0.1, 0.25, 60);
+  sfx(plasma ? 'plasma' : od ? 'gunOD' : 'gun', 0.7);
+  muzzleLight.color.set(plasma ? 0x7dffb0 : 0xffd08a); muzzleLight.intensity = plasma ? 1400 : od ? 900 : 600;
+  G.recoil = Math.min(0.6, (G.recoil || 0) + (plasma ? 0.35 : 0.12)); rumble(plasma ? 0.4 : 0.1, 0.25, plasma ? 120 : 60);
 }
 
 export function fireMissile() {
@@ -374,6 +421,18 @@ export function updateMenuShip(dt, time) {
   p.obj.lookAt(p.pos.x - Math.sin(a), p.pos.y, p.pos.z + Math.cos(a)); p.obj.rotateY(Math.PI); p.obj.rotateZ(-0.45);
   p.vel.set(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(r * 0.1);
   if (p.gear !== 0) { p.gear = 0; setGear(p.obj, 0); }
-  animateShip(p.obj, { power: 0.75, boost: 0, retro: 0, rcs: {}, time, missiles: 4 });
+  animateShip(p.obj, { power: 0.75, boost: 0, retro: 0, rcs: {}, time, missiles: p.obj.userData.parts.missiles.length });
   if (dt > 0) emitEngines(dt, 0.75, false);
+}
+
+/** Hangar : vaisseau posé sur le pont, réacteurs au ralenti. */
+export function placeInHangar() {
+  const p = player;
+  p.pos.set(0, DECK_TOP + GEAR_HEIGHT, PARK_Z); p.obj.quaternion.setFromAxisAngle(UP, Math.PI); p.vel.set(0, 0, 0);
+  p.obj.visible = true; p.gear = 1; setGear(p.obj, 1, 0.3); refreshStats();
+}
+export function updateHangarShip(time) {
+  const p = player;
+  animateShip(p.obj, { power: 0.12 + 0.03 * Math.sin(time * 3), boost: 0, retro: 0, rcs: {}, time, missiles: p.obj.userData.parts.missiles.length });
+  if (landingLight) landingLight.intensity = 700;
 }

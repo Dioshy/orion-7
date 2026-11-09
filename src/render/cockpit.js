@@ -8,6 +8,7 @@ import { player, SPD } from '../game/player.js';
 import { station } from '../game/station.js';
 import { boss } from '../game/boss.js';
 import { PICKUP_INFO } from '../game/pickups.js';
+import { ability, abilityDef } from '../game/abilities.js';
 import { clamp, fr, fmtDist, TAU } from '../core/util.js';
 
 export const CK = { scene: null, camera: null, pass: null, stick: null, throttle: null, screens: [], lamps: {}, sun: null, glass: null, frame: 0, look: new THREE.Vector2() };
@@ -211,7 +212,8 @@ function drawStatus(s) {
   bar(c, x, 206, bw, 9, p.odT > 0 ? 1 : p.heat / 100, p.odT > 0 ? C.gold : p.overheat ? C.red : p.heat > 70 ? C.amber : C.txt, p.odT > 0 ? 'SURCHARGE' : 'CHAUFFE', p.odT > 0 ? `${Math.ceil(p.odT)} s` : '');
   bar(c, x, 244, bw, 9, p.boost / S.maxBoost, C.friend, 'POSTCOMB.', `${Math.round(p.boost / S.maxBoost * 100)} %`);
   c.font = F(500, 16); c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.fillStyle = C.txt;
-  c.fillText(`MSL ${p.missiles}/${S.maxMissiles}  LRR ${p.flares}  ${p.fa ? 'FA' : 'FA OFF'}`, 14, 290);
+  c.fillText(`MSL ${p.missiles}/${S.maxMissiles}  LRR ${p.flares}  ${p.fa ? 'FA' : 'FA OFF'}`, 14, 278);
+  c.fillStyle = ability.cd <= 0 ? C.gold : C.dim; c.fillText(`${abilityDef().name.toUpperCase()} ${ability.cd <= 0 ? 'PRÊTE' : Math.ceil(ability.cd) + ' s'}`, 14, 298);
 }
 function drawTarget(s) {
   const c = s.ctx, w = s.w, p = player, t = p.target && !p.target.dead ? p.target : null;

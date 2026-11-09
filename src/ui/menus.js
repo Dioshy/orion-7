@@ -7,7 +7,7 @@ import { fr } from '../core/util.js';
 import { keyLabel, onLayout } from './keys.js';
 
 const $ = id => document.getElementById(id);
-const OVERLAYS = ['menu', 'settings', 'controls', 'records', 'pause', 'upgrade', 'victory', 'over'];
+const OVERLAYS = ['menu', 'hangar', 'settings', 'controls', 'records', 'pause', 'upgrade', 'victory', 'over'];
 let H = {}, backTo = null;
 
 export function initMenus(handlers) {
@@ -18,10 +18,10 @@ export function initMenus(handlers) {
   for (const b of seg.children) b.addEventListener('click', () => { setDiff(b.dataset.diff); sfx('click'); });
   setDiff(DIFFS[settings.difficulty] ? settings.difficulty : 'pilote');
   // boutons
-  $('btnStart').addEventListener('click', () => H.start());
+  $('btnStart').addEventListener('click', () => H.hangar());
   $('btnResume').addEventListener('click', () => H.resume());
   $('btnQuit').addEventListener('click', () => H.quit());
-  $('btnAgain').addEventListener('click', () => H.start());
+  $('btnAgain').addEventListener('click', () => H.hangar());
   $('btnMenu').addEventListener('click', () => H.toMenu());
   $('btnEndless').addEventListener('click', () => H.endless());
   $('btnFinish').addEventListener('click', () => H.finish());
@@ -102,12 +102,13 @@ const CONTROLS = [
   [['KeyW', 'KeyS'], 'gaz (poussée directe si FA coupée)'],
   [['KeyA', 'KeyD'], 'translation latérale'],
   [['KeyR', 'KeyF'], 'translation verticale'],
-  [['ShiftLeft'], 'postcombustion'],
+  [['ShiftLeft'], 'propulsion (postcombustion, impulsions ou fusion)'],
   [['ShiftLeft', 'KeyS'], 'rétro-postcombustion : freinage brutal, marche arrière'],
   [['KeyX'], 'gaz à zéro (le vaisseau freine)'],
   [['Clic gauche', 'Space'], 'canons · décollage automatique sur le pont'],
   [['Clic droit', 'KeyG'], 'missile (verrouillage : cible au centre)'],
   [['KeyC'], 'leurres contre les missiles ennemis'],
+  [['KeyZ'], 'capacité spéciale (choisie au hangar)'],
   [['KeyT', 'KeyY'], 'cibler sous le réticule · cible suivante'],
   [['Tab'], 'cibler la torpille la plus urgente'],
   [['KeyB'], 'assistance de vol (FA) ON / OFF'],
@@ -115,7 +116,7 @@ const CONTROLS = [
   [['Enter'], 'lancer la vague suivante (prime)'],
   [['KeyP', 'Escape'], 'pause'],
 ];
-const PAD = [['Stick gauche', 'orienter le vaisseau'], ['Stick droit', 'gaz (haut/bas) et roulis'], ['Croix', 'translations'], ['RT', 'canons'], ['LT', 'missile'], ['RB', 'postcombustion'], ['LB', 'leurres'], ['A', 'cibler sous le réticule'], ['X', 'cible suivante'], ['L3', 'cibler la torpille'], ['B', 'assistance de vol'], ['Y', 'vue'], ['Select', 'portée radar'], ['Start', 'pause']];
+const PAD = [['Stick gauche', 'orienter le vaisseau'], ['Stick droit', 'gaz (haut/bas) et roulis'], ['Croix', 'translations'], ['RT', 'canons'], ['LT', 'missile'], ['RB', 'postcombustion'], ['LB', 'leurres'], ['A', 'cibler sous le réticule'], ['X', 'cible suivante'], ['L3', 'cibler la torpille'], ['B', 'assistance de vol'], ['Y', 'capacité spéciale'], ['R3', 'vue'], ['Select', 'portée radar'], ['Start', 'pause']];
 function ctlRow(keys, txt) {
   const row = document.createElement('div'); row.className = 'ctl';
   const k = document.createElement('span'); k.className = 'k';
@@ -185,7 +186,8 @@ export function medals(G) {
   if (s.torpHits === 0 && s.wavesCleared >= 3) out.push(['Mur infranchissable', 'Aucune torpille n\'a touché la station']);
   return out;
 }
-export function showOver({ eyebrow, title, text, items, medalList, rank }) {
+export function showOver({ eyebrow, title, text, items, medalList, rank, credits }) {
+  $('overCredits').textContent = credits ? `+${fr(credits.gain)} crédits · total ${fr(credits.total)} — dépensez-les au hangar` : '';
   $('overEyebrow').textContent = eyebrow; $('overTitle').textContent = title; $('overText').textContent = text;
   statGrid($('overStats'), items);
   $('overMedals').replaceChildren(...medalList.map(([n, d]) => { const m = document.createElement('div'); m.className = 'medal'; m.textContent = n; const sm = document.createElement('small'); sm.textContent = d; m.append(sm); return m; }));
@@ -205,5 +207,5 @@ export const nav = {
     let i = items.indexOf(document.activeElement); i = (i + d + items.length) % items.length; items[i].focus();
   },
   ok() { const a = document.activeElement; if (a && a.tagName === 'BUTTON') a.click(); else if (a && a.type === 'checkbox') a.click(); },
-  back() { const o = visibleOverlay(); if (['settings', 'controls', 'records'].includes(o)) closePanel(); else if (o === 'pause') H.resume(); },
+  back() { const o = visibleOverlay(); if (['settings', 'controls', 'records'].includes(o)) closePanel(); else if (o === 'pause') H.resume(); else if (o === 'hangar') H.toMenu(); },
 };

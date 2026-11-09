@@ -182,48 +182,178 @@ export function buildPlayerShip() {
     const r = decal(DECAL_ROUNDEL, 1.0, 1.0); r.position.set(s * 3.95, wingTop + 0.012, 2.9); r.rotation.x = -HALF; g.add(r);
   }
 
-  // --- pièces animées ---
-  const parts = { flames: [], retro: [], rcs: {}, missiles: [], nav: [], gear: [], doors: [], gearT: 1 };
-  for (const s of [-1, 1]) {
-    const f = flameMesh(0xeaf4ff, 0x3a7dff, 0.6); f.position.set(s * 1.32, -0.1, 6.85); g.add(f); parts.flames.push(f);
-    const r = flameMesh(0xfff0e0, 0xff8a3a, 0.14); r.rotation.y = Math.PI; r.position.set(s * (halfW(-6.4) + 0.05), 0, -6.62); g.add(r); parts.retro.push(r);
-  }
-  // propulseurs d'attitude : position et direction d'éjection
-  const nx = halfW(-6.4) + 0.2;
-  const rcsDef = { noseUp: [0, topAt(-6.5) + 0.3, -6.5], noseDown: [0, botAt(-6.5) - 0.3, -6.5], noseL: [-nx, 0, -6.4], noseR: [nx, 0, -6.4], lUp: [-POD_X, WING_Y + 0.5, POD_Z + 2.2], lDown: [-POD_X, WING_Y - 0.5, POD_Z + 2.2], rUp: [POD_X, WING_Y + 0.5, POD_Z + 2.2], rDown: [POD_X, WING_Y - 0.5, POD_Z + 2.2] };
-  for (const k in rcsDef) {
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: new THREE.Color(0xdfeaff).multiplyScalar(3), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
-    sp.position.set(...rcsDef[k]); sp.scale.set(1.5, 1.5, 1); g.add(sp); parts.rcs[k] = sp;
-  }
-  // missiles visibles sous les pylônes
-  for (const [x, z] of [[-3.2, 2.0], [3.2, 2.0], [-4.4, 2.9], [4.4, 2.9]]) {
-    const m = model('missile'); for (const c of [...m.children]) if (c.isSprite) m.remove(c);
-    m.position.set(x, wingBot - 0.6, z); m.scale.setScalar(1.15); g.add(m); parts.missiles.push(m);
-  }
-  // feux de navigation (bouts d'aile rouge/vert, feu blanc à éclats sur l'épine)
-  for (const [c, x, y, z] of [[0xff3b2b, -POD_X - 0.38, WING_Y, POD_Z - 0.6], [0x3bff6a, POD_X + 0.38, WING_Y, POD_Z - 0.6], [0xffffff, 0, topAt(4.6) + 0.3, 4.6]]) {
-    const sp = glowSprite(c, 1.8, 3, false); sp.position.set(x, y, z); g.add(sp); parts.nav.push(sp);
-  }
-  // train : avant (se replie vers l'arrière), principaux (se replient vers le fuselage)
   const noseY = botAt(NOSE_Z) + 0.12, mainY = -0.62;
-  const nose = gearLeg(GEAR_HEIGHT + noseY - 0.25, 0.4, 1); nose.position.set(0, noseY, NOSE_Z); nose.userData.fold = ['x', -1.62]; g.add(nose); parts.gear.push(nose);
-  for (const s of [-1, 1]) {
-    const m = gearLeg(GEAR_HEIGHT + mainY - 0.25, 0.5, -1); m.position.set(s * MAIN_X, mainY, MAIN_Z); m.userData.fold = ['z', -s * 1.62]; g.add(m); parts.gear.push(m);
-    const d = door(0.62, 1.9); d.position.set(s * (MAIN_X + 0.31), -0.64, MAIN_Z); d.scale.x = -s; d.userData.ax = s * 1.35; g.add(d); parts.doors.push(d);
-    const nd = door(0.28, 2.0); nd.position.set(s * 0.28, botAt(NOSE_Z) + 0.02, NOSE_Z + 0.9); nd.scale.x = -s; nd.userData.ax = s * 1.45; g.add(nd); parts.doors.push(nd);
-  }
-  const eng = new THREE.PointLight(0x7fb0ff, 0, 30, 2); eng.position.set(0, -0.2, 8.2); g.add(eng); parts.engLight = eng;
-  // phare de roulage sur la jambe avant
-  const lamp = glowSprite(0xffffff, 1.0, 2.5, false); lamp.position.set(0, -1.6, NOSE_Z - 0.25); g.add(lamp); parts.lamp = lamp;
+  return addParts(g, {
+    flames: [[-1.32, -0.1, 6.85, 0.6], [1.32, -0.1, 6.85, 0.6]],
+    retro: [[-(halfW(-6.4) + 0.05), 0, -6.62], [halfW(-6.4) + 0.05, 0, -6.62]],
+    rcs: rcsSet(halfW(-6.4) + 0.2, topAt(-6.5) + 0.3, botAt(-6.5) - 0.3, -6.5, POD_X, WING_Y, POD_Z + 2.2),
+    missiles: [[-3.2, wingBot - 0.6, 2.0], [3.2, wingBot - 0.6, 2.0], [-4.4, wingBot - 0.6, 2.9], [4.4, wingBot - 0.6, 2.9]],
+    nav: [[0xff3b2b, -POD_X - 0.38, WING_Y, POD_Z - 0.6], [0x3bff6a, POD_X + 0.38, WING_Y, POD_Z - 0.6], [0xffffff, 0, topAt(4.6) + 0.3, 4.6]],
+    gear: [{ x: 0, y: noseY, z: NOSE_Z, fold: ['x', -1.62], pad: 0.4, brace: 1 }, { x: -MAIN_X, y: mainY, z: MAIN_Z, fold: ['z', 1.62], pad: 0.5, brace: -1 }, { x: MAIN_X, y: mainY, z: MAIN_Z, fold: ['z', -1.62], pad: 0.5, brace: -1 }],
+    doors: [[-(MAIN_X + 0.31), -0.64, MAIN_Z, 0.62, 1.9, -1, 1.35], [MAIN_X + 0.31, -0.64, MAIN_Z, 0.62, 1.9, 1, 1.35], [-0.28, botAt(NOSE_Z) + 0.02, NOSE_Z + 0.9, 0.28, 2.0, -1, 1.45], [0.28, botAt(NOSE_Z) + 0.02, NOSE_Z + 0.9, 0.28, 2.0, 1, 1.45]],
+    lamp: [0, -1.6, NOSE_Z - 0.25], engLight: [0, -0.2, 8.2],
+    engines: [[-1.32, -0.1, 7.0], [1.32, -0.1, 7.0]],
+    guns: [[-POD_X, WING_Y, POD_Z - 5.1], [POD_X, WING_Y, POD_Z - 5.1], [0, botAt(-5) - 0.2, -5]],
+  });
+}
+
+/* ---------- Pièces animées communes à tous les vaisseaux ---------- */
+function rcsSet(nx, ny0, ny1, nz, wx, wy, wz) {
+  return { noseUp: [0, ny0, nz], noseDown: [0, ny1, nz], noseL: [-nx, 0, nz + 0.1], noseR: [nx, 0, nz + 0.1], lUp: [-wx, wy + 0.5, wz], lDown: [-wx, wy - 0.5, wz], rUp: [wx, wy + 0.5, wz], rDown: [wx, wy - 0.5, wz] };
+}
+function addParts(g, c) {
   shadowsOn(g);
+  const parts = { flames: [], retro: [], rcs: {}, missiles: [], nav: [], gear: [], doors: [], gearT: 1 };
+  for (const [x, y, z, r] of c.flames) { const f = flameMesh(0xeaf4ff, 0x3a7dff, r); f.position.set(x, y, z); g.add(f); parts.flames.push(f); }
+  for (const [x, y, z] of c.retro) { const r = flameMesh(0xfff0e0, 0xff8a3a, 0.14); r.rotation.y = Math.PI; r.position.set(x, y, z); g.add(r); parts.retro.push(r); }
+  for (const k in c.rcs) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX_GLOW, color: new THREE.Color(0xdfeaff).multiplyScalar(3), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+    sp.position.set(...c.rcs[k]); sp.scale.set(1.5, 1.5, 1); g.add(sp); parts.rcs[k] = sp;
+  }
+  for (const [x, y, z] of c.missiles) {
+    const m = model('missile'); for (const ch of [...m.children]) if (ch.isSprite) m.remove(ch);
+    m.position.set(x, y, z); m.scale.setScalar(1.15); g.add(m); parts.missiles.push(m);
+  }
+  for (const [col, x, y, z] of c.nav) { const sp = glowSprite(col, 1.8, 3, false); sp.position.set(x, y, z); g.add(sp); parts.nav.push(sp); }
+  for (const L of c.gear) {
+    const leg = gearLeg(GEAR_HEIGHT + L.y - 0.25, L.pad, L.brace); leg.position.set(L.x, L.y, L.z); leg.userData.fold = L.fold; shadowsOn(leg); g.add(leg); parts.gear.push(leg);
+  }
+  for (const [x, y, z, w, l, s, ax] of c.doors) { const d = door(w, l); d.position.set(x, y, z); d.scale.x = -s; d.userData.ax = s * ax; g.add(d); parts.doors.push(d); }
+  const eng = new THREE.PointLight(0x7fb0ff, 0, 30, 2); eng.position.set(...c.engLight); g.add(eng); parts.engLight = eng;
+  const lamp = glowSprite(0xffffff, 1.0, 2.5, false); lamp.position.set(...c.lamp); g.add(lamp); parts.lamp = lamp;
+  const V = a => new THREE.Vector3(...a);
   g.userData = {
-    parts,
-    engines: [new THREE.Vector3(-1.32, -0.1, 7.0), new THREE.Vector3(1.32, -0.1, 7.0)],
-    guns: [new THREE.Vector3(-POD_X, WING_Y, POD_Z - 5.1), new THREE.Vector3(POD_X, WING_Y, POD_Z - 5.1), new THREE.Vector3(0, botAt(-5) - 0.2, -5)],
+    parts, engines: c.engines.map(V), guns: c.guns.map(V),
     rcsDirs: { noseUp: [0, 1, 0], noseDown: [0, -1, 0], noseL: [-1, 0, 0], noseR: [1, 0, 0], lUp: [0, 1, 0], lDown: [0, -1, 0], rUp: [0, 1, 0], rDown: [0, -1, 0] },
   };
   return g;
 }
+
+/** Fonctions de surface pour un profil de fuselage tourné (avant = -z). */
+function prof(P, sx, sy) {
+  const r = z => { const y = -z; for (let i = 0; i < P.length - 1; i++) { const [r0, y0] = P[i], [r1, y1] = P[i + 1]; if (y <= y0 && y >= y1) return r0 + (r1 - r0) * (y0 - y) / (y0 - y1); } return 0; };
+  return { top: z => r(z) * sy, bot: z => -r(z) * sy, half: z => r(z) * sx };
+}
+
+/* ---------- Vipère : intercepteur effilé, plans canard, un gros réacteur ---------- */
+function buildVipere() {
+  const P = [[0, 8], [0.25, 7], [0.5, 5.5], [0.78, 3.5], [0.95, 1.5], [1.0, -0.5], [0.98, -2.5], [0.88, -4.2], [0.78, -4.9]];
+  const F = prof(P, 1.1, 0.85), b = new Builder(), WY = -0.2;
+  b.add(Lathe(P, 32), SH.hull, 0, 0, 0, -HALF, 0, 0, 1.1, 1, 0.85);
+  b.add(Sph(1, 32, 20), MAT.glass, 0, F.top(-3.2) - 0.12, -3.2, 0, 0, 0, 0.5, 0.42, 1.55);
+  b.add(Sph(1, 24, 16), SH.dark, 0, F.top(-1.8) - 0.15, -1.6, 0, 0, 0, 0.45, 0.36, 0.9);
+  b.add(Box(0.55, 0.32, 5.2), SH.dark, 0, F.top(1.0) + 0.05, 1.2);
+  b.add(Box(0.22, 0.04, 5.3), SH.accent, 0, F.top(1.0) + 0.22, 1.2);
+  b.add(Box(0.5, 0.03, 1.6), SH.matte, 0, F.top(-4.9) + 0.005, -4.9, Math.atan2(F.top(-4.1) - F.top(-5.7), 1.6), 0, 0);
+  b.add(Cyl(0.025, 0.025, 1.2, 8), metal, 0, 0, -8.5, -HALF, 0, 0);
+  // entrée d'air ventrale sous le cockpit
+  b.add(Extrude([[-2.6, 0.0], [1.4, 0.0], [1.9, -0.25], [1.9, -0.5], [-2.2, -0.62]], 1.1, 0.04), SH.dark, 0, F.bot(-1.0) + 0.1, 0, 0, -HALF, 0);
+  b.add(Extrude([[-2.56, -0.04], [-2.22, -0.56], [-2.15, -0.56], [-2.5, -0.04]], 0.92, 0), blackMat, 0, F.bot(-1.0) + 0.1, -0.02, 0, -HALF, 0);
+  // ailes en double delta, plans canard
+  b.add(Extrude([[-4.7, -4.0], [-4.7, -3.2], [-2.2, 0.4], [-0.8, 2.6], [0.8, 2.6], [2.2, 0.4], [4.7, -3.2], [4.7, -4.0]], 0.2), SH.hull, 0, WY, 0, -HALF, 0, 0);
+  b.add(Extrude([[-2.0, 4.6], [-2.0, 4.9], [-0.6, 5.7], [0.6, 5.7], [2.0, 4.9], [2.0, 4.6]], 0.1), SH.dark, 0, 0.05, 0, -HALF, 0, 0);
+  for (const s of [-1, 1]) {
+    b.add(Box(Math.hypot(2.5, 3.6), 0.05, 0.14), SH.accent, s * 3.45, WY + 0.14, -1.4 + 0.12, 0, -s * Math.atan2(3.6, 2.5), 0);
+    b.add(Box(0.12, 1.8, 1.7), SH.hull, s * 4.75, WY + 0.75, 3.4, 0.25, 0, s * -0.45);           // dérives de bout d'aile
+    b.add(Box(0.16, 0.3, 0.9), SH.accent, s * 5.1, WY + 1.55, 3.7, 0.25, 0, s * -0.45);
+    b.add(Box(2.6, 0.16, 0.45), SH.dark, s * 3.2, WY, 3.75);                                     // volets
+    // émetteurs d'armes dans l'emplanture
+    b.add(Cyl(0.2, 0.24, 2.4, 12), SH.dark, s * 1.3, -0.35, -2.6, -HALF, 0, 0);
+    b.add(Cyl(0.09, 0.09, 1.4, 8), metal, s * 1.3, -0.35, -4.4, -HALF, 0, 0);
+    b.add(Box(0.04, 0.2, 1.1), SH.dark, s * 2.5, WY + 0.12, 1.4);                               // cloison
+    b.add(Box(0.6, 0.04, 1.5), blackMat, s * 1.5, WY - 0.12, 1.5);                              // soute de train
+    b.add(Box(0.2, 0.24, 0.35), SH.dark, s * (F.half(-6.0) + 0.04), 0, -6.0);
+  }
+  // réacteur unique
+  b.add(Cyl(0.92, 0.98, 3.0, 28), SH.dark, 0, -0.05, 3.5, -HALF, 0, 0);
+  b.add(new THREE.TorusGeometry(0.97, 0.07, 8, 32), metal, 0, -0.05, 5.0);
+  b.add(Cyl(0.8, 0.94, 1.2, 28, true), nozzleMat, 0, -0.05, 5.6, -HALF, 0, 0);
+  b.add(Cyl(0.7, 0.78, 1.0, 28, true), nozzleMat, 0, -0.05, 5.55, -HALF, 0, 0);
+  b.add(Cyl(0.68, 0.68, 0.06, 28), MAT.engine, 0, -0.05, 5.15, -HALF, 0, 0);
+  b.add(Box(0.12, 0.7, 1.2), SH.dark, 0, F.bot(3.6) - 0.3, 3.6);
+  b.add(Box(0.5, 0.04, 1.6), blackMat, 0, F.bot(-4.2) + 0.03, -3.4);
+  const g = b.build();
+  for (const s of [-1, 1]) { const r = decal(DECAL_ROUNDEL, 0.8, 0.8); r.position.set(s * 3.2, WY + 0.112, 2.4); r.rotation.x = -HALF; g.add(r); }
+  const NZ = -4.2, noseY = F.bot(NZ) + 0.1, mainY = WY - 0.28;
+  return addParts(g, {
+    flames: [[0, -0.05, 6.15, 0.74]],
+    retro: [[-(F.half(-6.0) + 0.04), 0, -6.2], [F.half(-6.0) + 0.04, 0, -6.2]],
+    rcs: rcsSet(F.half(-6.0) + 0.2, F.top(-6.2) + 0.3, F.bot(-6.2) - 0.3, -6.2, 4.7, WY, 3.6),
+    missiles: [[-2.6, WY - 0.6, 1.8], [2.6, WY - 0.6, 1.8], [-3.6, WY - 0.6, 2.6], [3.6, WY - 0.6, 2.6]],
+    nav: [[0xff3b2b, -4.8, WY, 3.0], [0x3bff6a, 4.8, WY, 3.0], [0xffffff, 0, F.top(3.4) + 0.3, 3.4]],
+    gear: [{ x: 0, y: noseY, z: NZ, fold: ['x', -1.62], pad: 0.36, brace: 1 }, { x: -1.5, y: mainY, z: 1.4, fold: ['z', 1.62], pad: 0.42, brace: -1 }, { x: 1.5, y: mainY, z: 1.4, fold: ['z', -1.62], pad: 0.42, brace: -1 }],
+    doors: [[-1.8, WY - 0.13, 1.5, 0.6, 1.5, -1, 1.35], [1.8, WY - 0.13, 1.5, 0.6, 1.5, 1, 1.35], [-0.25, F.bot(-4.2) + 0.02, -3.4, 0.25, 1.6, -1, 1.45], [0.25, F.bot(-4.2) + 0.02, -3.4, 0.25, 1.6, 1, 1.45]],
+    lamp: [0, -1.5, NZ - 0.25], engLight: [0, -0.2, 7.2],
+    engines: [[0, -0.05, 6.3]],
+    guns: [[-1.3, -0.35, -5.2], [1.3, -0.35, -5.2], [0, F.bot(-5) - 0.15, -5]],
+  });
+}
+
+/* ---------- Rempart : canonnière lourde à double poutre et quatre réacteurs ---------- */
+function buildRempart() {
+  const P = [[0, 7.6], [0.6, 6.7], [1.2, 5.0], [1.6, 3.0], [1.82, 0.5], [1.86, -2.0], [1.76, -4.4], [1.45, -5.4]];
+  const F = prof(P, 1.25, 0.85), b = new Builder(), BX = 3.7, BY = -0.15, WY = -0.25;
+  b.add(Lathe(P, 32), SH.hull, 0, 0, 0, -HALF, 0, 0, 1.25, 1, 0.85);
+  b.add(Sph(1, 32, 20), MAT.glass, 0, F.top(-2.6) - 0.22, -2.6, 0, 0, 0, 0.85, 0.62, 2.0);
+  b.add(Sph(1, 24, 16), SH.dark, 0, F.top(-0.8) - 0.2, -0.6, 0, 0, 0, 0.75, 0.55, 1.1);
+  b.add(Box(1.3, 0.5, 5.6), SH.dark, 0, F.top(2.0) + 0.05, 2.2);
+  b.add(Box(0.36, 0.05, 5.7), SH.accent, 0, F.top(2.0) + 0.31, 2.2);
+  b.add(Box(0.9, 0.03, 1.6), SH.matte, 0, F.top(-4.6) + 0.005, -4.6, Math.atan2(F.top(-3.8) - F.top(-5.4), 1.6), 0, 0);
+  for (const s of [-1, 1]) {                                                                     // plaques de blindage
+    b.add(Box(0.14, 0.9, 4.2), SH.dark, s * (F.half(-1) + 0.02), 0.15, -1.0, 0, 0, s * 0.12);
+    b.add(Box(0.14, 0.7, 3.0), SH.dark, s * (F.half(2.6) + 0.02), 0.1, 2.6, 0, 0, s * 0.12);
+  }
+  // aile droite épaisse traversant les poutres
+  b.add(Box(13.2, 0.42, 3.4), SH.hull, 0, WY, 1.2);
+  b.add(Box(13.3, 0.06, 0.2), SH.accent, 0, WY + 0.18, -0.4);
+  for (const s of [-1, 1]) {
+    // poutre-réacteurs
+    b.add(Cyl(0.95, 1.05, 9.0, 24), SH.dark, s * BX, BY, 1.6, -HALF, 0, 0);
+    b.add(new THREE.ConeGeometry(0.95, 1.6, 24), SH.dark, s * BX, BY, -3.7, -HALF, 0, 0);
+    b.add(Cyl(0.16, 0.16, 2.2, 10), metal, s * BX, BY, -5.3, -HALF, 0, 0);                     // canon de poutre
+    b.add(Box(1.95, 0.08, 1.2), SH.accent, s * BX, BY + 0.98, -1.2);
+    for (const dx of [-0.48, 0.48]) {
+      b.add(Cyl(0.46, 0.5, 0.9, 20, true), nozzleMat, s * BX + dx, BY, 6.4, -HALF, 0, 0);
+      b.add(Cyl(0.44, 0.44, 0.05, 20), MAT.engine, s * BX + dx, BY, 6.05, -HALF, 0, 0);
+    }
+    b.add(new THREE.TorusGeometry(1.0, 0.07, 8, 32), metal, s * BX, BY, 6.05);
+    // dérives jumelles
+    b.add(Box(0.2, 2.3, 2.4), SH.hull, s * BX, BY + 1.95, 5.3, 0.2, 0, 0);
+    b.add(Box(0.24, 0.32, 1.2), SH.accent, s * BX, BY + 3.0, 5.6, 0.2, 0, 0);
+    b.add(Box(0.5, 0.36, 0.5), SH.dark, s * 6.6, WY, 1.2);                                       // bouts d'aile
+    b.add(Box(0.8, 0.04, 2.0), blackMat, s * BX, BY - 1.03, 1.0);                               // soute de train
+    b.add(Box(0.24, 0.26, 0.36), SH.dark, s * (F.half(-5.6) + 0.04), 0, -5.6);
+  }
+  b.add(Box(7.6, 0.2, 1.4), SH.hull, 0, BY + 3.05, 5.7);                                         // empennage
+  // tourelle de menton
+  b.add(Sph(0.55, 16, 12), SH.dark, 0, F.bot(-4.0) - 0.15, -4.0);
+  b.add(Cyl(0.11, 0.11, 1.6, 10), metal, 0, F.bot(-4.0) - 0.2, -5.0, -HALF, 0, 0);
+  b.add(Box(0.6, 0.04, 1.8), blackMat, 0, F.bot(-2.6) + 0.03, -1.8);
+  const g = b.build();
+  for (const s of [-1, 1]) {
+    const fin = new THREE.Group(); fin.position.set(s * BX, BY + 1.95, 5.3); fin.rotation.x = 0.2; g.add(fin);
+    const n = decal(DECAL_NUM, 1.5, 1.5); n.position.x = s * 0.105; n.rotation.y = s * Math.PI / 2; fin.add(n);
+    const r = decal(DECAL_ROUNDEL, 1.1, 1.1); r.position.set(s * 5.4, WY + 0.215, 1.3); r.rotation.x = -HALF; g.add(r);
+  }
+  const NZ = -2.6, noseY = F.bot(NZ) + 0.12, mainY = BY - 0.95;
+  return addParts(g, {
+    flames: [[-BX - 0.48, BY, 6.85, 0.44], [-BX + 0.48, BY, 6.85, 0.44], [BX - 0.48, BY, 6.85, 0.44], [BX + 0.48, BY, 6.85, 0.44]],
+    retro: [[-(F.half(-5.6) + 0.04), 0, -5.85], [F.half(-5.6) + 0.04, 0, -5.85]],
+    rcs: rcsSet(F.half(-5.6) + 0.2, F.top(-5.8) + 0.3, F.bot(-5.8) - 0.3, -5.8, 6.6, WY, 1.2),
+    missiles: [[-1.95, WY - 0.65, 1.4], [1.95, WY - 0.65, 1.4], [-5.2, WY - 0.65, 1.4], [5.2, WY - 0.65, 1.4], [-2.7, WY - 0.65, 1.6], [2.7, WY - 0.65, 1.6]],
+    nav: [[0xff3b2b, -6.9, WY, 1.2], [0x3bff6a, 6.9, WY, 1.2], [0xffffff, 0, BY + 3.25, 5.7]],
+    gear: [{ x: 0, y: noseY, z: NZ, fold: ['x', -1.62], pad: 0.5, brace: 1 }, { x: -BX, y: mainY, z: 1.0, fold: ['z', 1.62], pad: 0.6, brace: -1 }, { x: BX, y: mainY, z: 1.0, fold: ['z', -1.62], pad: 0.6, brace: -1 }],
+    doors: [[-BX - 0.4, BY - 1.04, 1.0, 0.8, 2.0, -1, 1.35], [BX + 0.4, BY - 1.04, 1.0, 0.8, 2.0, 1, 1.35], [-0.3, F.bot(-2.6) + 0.02, -1.8, 0.3, 1.8, -1, 1.45], [0.3, F.bot(-2.6) + 0.02, -1.8, 0.3, 1.8, 1, 1.45]],
+    lamp: [0, -1.6, NZ - 0.3], engLight: [0, -0.2, 8.4],
+    engines: [[-BX - 0.48, BY, 7.0], [-BX + 0.48, BY, 7.0], [BX - 0.48, BY, 7.0], [BX + 0.48, BY, 7.0]],
+    guns: [[-BX, BY, -6.5], [BX, BY, -6.5], [0, F.bot(-4.0) - 0.2, -5.9]],
+  });
+}
+
+/** Construit le vaisseau choisi. */
+export function buildShip(id) { return id === 'vipere' ? buildVipere() : id === 'rempart' ? buildRempart() : buildPlayerShip(); }
+/** Livrée : couleurs de la coque et des liserés. */
+export function setPaint(hull, accent) { SH.hull.color.set(hull); SH.accent.color.set(accent); }
 
 /** Train : t = 0 rentré, 1 sorti. Les trappes s'ouvrent d'abord, puis les jambes pivotent ; elles se referment à moitié une fois le train sorti. */
 export function setGear(ship, t, compress = 0) {
