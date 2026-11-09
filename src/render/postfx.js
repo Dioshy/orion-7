@@ -46,20 +46,20 @@ export const SpeedShader = {
     }`,
 };
 
-/** Rayons de soleil calculés à mi-résolution (4× moins de pixels, 24 échantillons) puis ajoutés à l'image. */
+/** Rayons de soleil en pleine résolution (30 échantillons, tramage fin), ajoutés à l'image. */
 const VS = 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
 export class GodRaysPass extends Pass {
   constructor() {
     super();
     this.rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     this.raysMat = new THREE.ShaderMaterial({
-      uniforms: { tDiffuse: { value: null }, sunPos: { value: new THREE.Vector2(0.5, 0.5) }, threshold: { value: 1.2 }, decay: { value: 0.93 }, density: { value: 0.85 } },
+      uniforms: { tDiffuse: { value: null }, sunPos: { value: new THREE.Vector2(0.5, 0.5) }, threshold: { value: 1.2 }, decay: { value: 0.945 }, density: { value: 0.85 }, dither: { value: 1 } },
       vertexShader: VS,
-      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 sunPos; uniform float threshold; uniform float decay; uniform float density; varying vec2 vUv;
-        #define N 24
+      fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 sunPos; uniform float threshold; uniform float decay; uniform float density; uniform float dither; varying vec2 vUv;
+        #define N 30
         void main(){
           vec2 delta = (vUv - sunPos) * density / float(N);
-          vec2 uv = vUv - delta * fract(sin(dot(vUv, vec2(12.9898,78.233))) * 43758.5453);
+          vec2 uv = vUv - delta * (dither > 0.5 ? fract(sin(dot(vUv, vec2(12.9898,78.233))) * 43758.5453) : 0.5);
           float illum = 1.0; vec3 acc = vec3(0.0);
           for (int i = 0; i < N; i++) {
             uv -= delta;
@@ -80,7 +80,10 @@ export class GodRaysPass extends Pass {
     this.quad = new FullScreenQuad(null);
     this.uniforms = { sunPos: this.raysMat.uniforms.sunPos, strength: this.compMat.uniforms.strength };
   }
-  setSize(w, h) { this.rt.setSize(Math.max(1, w >> 1), Math.max(1, h >> 1)); }
+  setSize(w, h) { this.w = w; this.h = h; this.applyScale(); }
+  /** Pleine résolution avec tramage fin, ou demi-résolution sans tramage (lisse) si la machine peine. */
+  setScale(s) { if (s !== this.scale) { this.scale = s; this.applyScale(); } }
+  applyScale() { const s = this.scale || 1; this.raysMat.uniforms.dither.value = s >= 1 ? 1 : 0; this.rt.setSize(Math.max(1, Math.round((this.w || 1) * s)), Math.max(1, Math.round((this.h || 1) * s))); }
   render(renderer, writeBuffer, readBuffer) {
     this.raysMat.uniforms.tDiffuse.value = readBuffer.texture;
     renderer.setRenderTarget(this.rt); this.quad.material = this.raysMat; this.quad.render(renderer);

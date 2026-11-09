@@ -179,14 +179,18 @@ function buildPlanet() {
   const mat = new THREE.ShaderMaterial({
     uniforms: { ...uniforms, tSurf: { value: maps.surf }, tCloud: { value: maps.cloud } },
     vertexShader: vert,
-    fragmentShader: `
+    fragmentShader: NOISE_GLSL + `
       uniform vec3 sunDir; uniform vec3 sunObj; uniform float time; uniform sampler2D tSurf; uniform sampler2D tCloud;
       varying vec3 vObj; varying vec3 vN; varying vec3 vV; varying vec2 vUv;
       vec2 dirToUv(vec3 d){ return vec2(fract(atan(d.z, -d.x) / 6.2831853), 1.0 - acos(clamp(d.y, -1.0, 1.0)) / 3.14159265); }
       float cloudAt(vec2 uv){ uv.x += time * 0.004 / 6.2831853; return texture2D(tCloud, uv).r; }
       void main(){
         vec4 sf = texture2D(tSurf, vUv); vec3 col = sf.rgb; float land = sf.a;
-        float clouds = cloudAt(vUv) * 0.85;
+        // couche nuageuse principale calculée par pixel (netteté) ; ombres portées lues dans la texture
+        float ca = time*0.004; mat2 rot = mat2(cos(ca),-sin(ca),sin(ca),cos(ca));
+        vec3 cpd = vObj; cpd.xz = rot*cpd.xz;
+        vec3 wq = cpd*vec3(2.2,4.4,2.2)+11.0;
+        float clouds = smoothstep(0.08, 0.5, fbm(wq + 0.9*vec3(fbm(wq*0.7,2), fbm(wq*0.7+5.2,2), 0.0), 5)) * 0.85;
         float shadow = cloudAt(dirToUv(normalize(vObj + sunObj*0.014)));
         float self = cloudAt(dirToUv(normalize(vObj + sunObj*0.006)));
         vec3 N = normalize(vN), V = normalize(vV);
@@ -199,8 +203,11 @@ function buildPlanet() {
         vec3 cloudCol = vec3(0.92,0.94,0.97)*(max(ndl,0.0)*1.6*cloudLit + 0.012);
         cloudCol *= mix(vec3(1.0), vec3(1.0,0.6,0.35), smoothstep(0.35, 0.0, ndl)*step(0.0, ndl));
         vec3 surf = mix(lit + vec3(1.0,0.9,0.75)*spec, cloudCol, clouds);
-        float city = texture2D(tCloud, vUv).g;
-        surf += vec3(1.0,0.62,0.28)*city*(1.0-day)*(1.0-clouds*0.85)*0.9;
+        if (day < 0.99) { // lumières des villes, calculées par pixel côté nuit seulement
+          vec3 p = vObj;
+          float city = pow(smoothstep(0.6,0.95, snoise(p*90.0)*0.5+0.5), 2.0) * smoothstep(0.6,0.85, snoise(p*9.0+3.0)*0.5+0.5) * smoothstep(0.1, 0.4, land);
+          surf += vec3(1.0,0.62,0.28)*city*(1.0-day)*(1.0-clouds*0.85)*0.9;
+        }
         // orages : éclairs dans les nuages du côté nuit
         vec3 cp = vObj * 55.0; vec3 cell = floor(cp); vec3 fc = fract(cp) - 0.5;
         float hsh = fract(sin(dot(cell, vec3(12.9898,78.233,37.719)) + floor(time*6.0)*7.13)*43758.5453);

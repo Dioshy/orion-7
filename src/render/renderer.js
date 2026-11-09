@@ -76,6 +76,7 @@ export function perfSample(dt) {
   if (R.fps < 48 && pr > 0.75) pr = Math.max(0.75, pr * 0.88);
   else if (R.fps > 57 && pr < R.prMax) pr = Math.min(R.prMax, pr * 1.1);
   if (Math.abs(pr - R.pr) > 0.01) { R.pr = pr; resize(); R._cool = 2; }
+  R.rays.setScale(R.pr <= 0.8 && R.fps < 48 ? 0.5 : 1);
 }
 
 /** Facteur de conversion taille monde → pixels pour les particules. */
