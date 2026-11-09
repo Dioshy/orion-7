@@ -220,6 +220,7 @@ function step(h) {
 
 function frame(now) {
   requestAnimationFrame(frame);
+  if (import.meta.env.DEV && window.__noLoop) return;
   const rdt = Math.min((now - last) / 1000, 0.1); last = now;
   pollPad(nav);
   perfSample(rdt);

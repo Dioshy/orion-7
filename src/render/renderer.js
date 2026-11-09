@@ -5,7 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
-import { GodRaysShader, SpeedShader } from './postfx.js';
+import { GodRaysPass, SpeedShader } from './postfx.js';
 import { settings } from '../core/settings.js';
 
 const PRESETS = {
@@ -25,7 +25,7 @@ export function initRenderer(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
   R.renderer = renderer;
   R.scene = new THREE.Scene();
   R.camera = new THREE.PerspectiveCamera(settings.fov, 1, 1, 60000);
@@ -37,7 +37,7 @@ export function initRenderer(canvas) {
   const bgPass = new RenderPass(R.bgScene, R.bgCamera);
   const mainPass = new RenderPass(R.scene, R.camera); mainPass.clear = false; mainPass.clearDepth = true;
   const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.4, 0.35, 1.05);
-  const rays = new ShaderPass(GodRaysShader), speed = new ShaderPass(SpeedShader);
+  const rays = new GodRaysPass(), speed = new ShaderPass(SpeedShader);
   composer.addPass(bgPass); composer.addPass(mainPass); composer.addPass(rays); composer.addPass(bloom); composer.addPass(speed); composer.addPass(new OutputPass());
   R.composer = composer; R.bloom = bloom; R.rays = rays; R.speed = speed;
   applyQuality();
@@ -70,10 +70,10 @@ export function perfSample(dt) {
   R._acc += dt; R._frames++;
   if (R._acc < 1.5) return;
   R.fps = R._frames / R._acc; R._acc = 0; R._frames = 0;
-  if (settings.quality !== 'auto') return;
+  if (settings.quality !== 'auto' || (import.meta.env.DEV && window.__fix)) return;
   if (R._cool > 0) { R._cool--; return; }
   let pr = R.pr;
-  if (R.fps < 48 && pr > 0.6) pr = Math.max(0.6, pr * 0.85);
+  if (R.fps < 48 && pr > 0.75) pr = Math.max(0.75, pr * 0.88);
   else if (R.fps > 57 && pr < R.prMax) pr = Math.min(R.prMax, pr * 1.1);
   if (Math.abs(pr - R.pr) > 0.01) { R.pr = pr; resize(); R._cool = 2; }
 }

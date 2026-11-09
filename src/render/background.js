@@ -129,52 +129,82 @@ function buildSky() {
   add(0x9ec8ff, 0.5, 700000, 9000);
 }
 
-function buildPlanet() {
-  const vert = `varying vec3 vObj; varying vec3 vN; varying vec3 vV;
-    void main(){ vObj = normalize(position); vec4 wp = modelMatrix*vec4(position,1.0); vN = normalize(mat3(modelMatrix)*normal); vV = cameraPosition - wp.xyz; gl_Position = projectionMatrix*viewMatrix*wp; }`;
+/* Cartes de la planète calculées une seule fois (relief, couleurs, nuages, villes) dans des textures
+   équirectangulaires : le shader de rendu n'a plus qu'à les lire, l'éclairage reste dynamique. */
+function bakePlanetMaps() {
+  const W = 2048, H = 1024, opts = { type: THREE.HalfFloatType, depthBuffer: false, generateMipmaps: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, wrapS: THREE.RepeatWrapping, wrapT: THREE.ClampToEdgeWrapping };
+  const surf = new THREE.WebGLRenderTarget(W, H, opts), cloud = new THREE.WebGLRenderTarget(W, H, opts);
   const mat = new THREE.ShaderMaterial({
-    uniforms,
-    vertexShader: vert,
+    uniforms: { mode: { value: 0 } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
     fragmentShader: NOISE_GLSL + `
-      uniform vec3 sunDir; uniform vec3 sunObj; uniform float time;
-      varying vec3 vObj; varying vec3 vN; varying vec3 vV;
-      vec3 cloudSpace(vec3 p){ float ca = time*0.004; mat2 rot = mat2(cos(ca),-sin(ca),sin(ca),cos(ca)); p.xz = rot*p.xz; return p; }
-      float cloudDen(vec3 q, int oct){ vec3 wq = q*vec3(2.2,4.4,2.2)+11.0; float cl = fbm(wq + 0.9*vec3(fbm(wq*0.7,2), fbm(wq*0.7+5.2,2), 0.0), oct); return smoothstep(0.08, 0.5, cl); }
+      uniform int mode; varying vec2 vUv;
       void main(){
-        vec3 p = vObj;
-        float h = fbm(p*1.8 + vec3(3.1,0.0,0.0), 6);
+        float phi = vUv.x * 6.2831853, th = (1.0 - vUv.y) * 3.14159265;
+        vec3 p = vec3(-cos(phi)*sin(th), cos(th), sin(phi)*sin(th));
+        float h = fbm(p*1.8 + vec3(3.1,0.0,0.0), 7);
         float lat = abs(p.y);
         float land = smoothstep(0.02, 0.05, h);
-        vec3 ocean = mix(vec3(0.004,0.02,0.07), vec3(0.01,0.07,0.15), smoothstep(-0.35, 0.03, h));
-        float dry = smoothstep(0.35, 0.7, fbm(p*3.0+7.0, 3)*0.5+0.5 + (0.35-lat)*0.6);
-        vec3 ground = mix(vec3(0.035,0.075,0.02), vec3(0.24,0.16,0.07), dry);
-        ground = mix(ground, vec3(0.16,0.14,0.12), smoothstep(0.28,0.5,h));
-        vec3 col = mix(ocean, ground, land);
         float ice = smoothstep(0.8, 0.86, lat + h*0.1);
-        col = mix(col, vec3(0.75,0.8,0.86), ice);
-        // nuages : densité, ombre portée au sol, auto-ombrage côté opposé au soleil
-        vec3 cp = cloudSpace(p);
-        float clouds = cloudDen(cp, 5) * 0.85;
-        float shadow = cloudDen(cloudSpace(p + sunObj*0.014), 3);
-        float self = cloudDen(cloudSpace(p + sunObj*0.006), 3);
+        if (mode == 0) {
+          vec3 ocean = mix(vec3(0.004,0.02,0.07), vec3(0.01,0.07,0.15), smoothstep(-0.35, 0.03, h));
+          float dry = smoothstep(0.35, 0.7, fbm(p*3.0+7.0, 4)*0.5+0.5 + (0.35-lat)*0.6);
+          vec3 ground = mix(vec3(0.035,0.075,0.02), vec3(0.24,0.16,0.07), dry);
+          ground = mix(ground, vec3(0.16,0.14,0.12), smoothstep(0.28,0.5,h));
+          vec3 col = mix(ocean, ground, land);
+          col = mix(col, vec3(0.75,0.8,0.86), ice);
+          gl_FragColor = vec4(col, land * (1.0 - ice));
+        } else {
+          vec3 wq = p*vec3(2.2,4.4,2.2)+11.0;
+          float cl = fbm(wq + 0.9*vec3(fbm(wq*0.7,3), fbm(wq*0.7+5.2,3), 0.0), 6);
+          float city = pow(smoothstep(0.6,0.95, snoise(p*90.0)*0.5+0.5), 2.0) * smoothstep(0.6,0.85, snoise(p*9.0+3.0)*0.5+0.5) * land*(1.0-ice)*smoothstep(0.05,0.12,h);
+          gl_FragColor = vec4(smoothstep(0.08, 0.5, cl), city, 0.0, 1.0);
+        }
+      }`,
+    depthTest: false, depthWrite: false,
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat), sc = new THREE.Scene(), cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  quad.frustumCulled = false; sc.add(quad);
+  const r = R.renderer, prev = r.getRenderTarget();
+  mat.uniforms.mode.value = 0; r.setRenderTarget(surf); r.render(sc, cam);
+  mat.uniforms.mode.value = 1; r.setRenderTarget(cloud); r.render(sc, cam);
+  r.setRenderTarget(prev); mat.dispose(); quad.geometry.dispose();
+  return { surf: surf.texture, cloud: cloud.texture };
+}
+
+function buildPlanet() {
+  const maps = bakePlanetMaps();
+  const vert = `varying vec3 vObj; varying vec3 vN; varying vec3 vV; varying vec2 vUv;
+    void main(){ vObj = normalize(position); vUv = uv; vec4 wp = modelMatrix*vec4(position,1.0); vN = normalize(mat3(modelMatrix)*normal); vV = cameraPosition - wp.xyz; gl_Position = projectionMatrix*viewMatrix*wp; }`;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { ...uniforms, tSurf: { value: maps.surf }, tCloud: { value: maps.cloud } },
+    vertexShader: vert,
+    fragmentShader: `
+      uniform vec3 sunDir; uniform vec3 sunObj; uniform float time; uniform sampler2D tSurf; uniform sampler2D tCloud;
+      varying vec3 vObj; varying vec3 vN; varying vec3 vV; varying vec2 vUv;
+      vec2 dirToUv(vec3 d){ return vec2(fract(atan(d.z, -d.x) / 6.2831853), 1.0 - acos(clamp(d.y, -1.0, 1.0)) / 3.14159265); }
+      float cloudAt(vec2 uv){ uv.x += time * 0.004 / 6.2831853; return texture2D(tCloud, uv).r; }
+      void main(){
+        vec4 sf = texture2D(tSurf, vUv); vec3 col = sf.rgb; float land = sf.a;
+        float clouds = cloudAt(vUv) * 0.85;
+        float shadow = cloudAt(dirToUv(normalize(vObj + sunObj*0.014)));
+        float self = cloudAt(dirToUv(normalize(vObj + sunObj*0.006)));
         vec3 N = normalize(vN), V = normalize(vV);
         float ndl = dot(N, sunDir);
         float day = smoothstep(-0.1, 0.25, ndl);
         vec3 lit = col*max(ndl,0.0)*2.2*(1.0 - 0.6*shadow*(1.0-clouds)) + col*0.02;
         vec3 H = normalize(sunDir+V);
-        float spec = pow(max(dot(N,H),0.0), 70.0)*(1.0-land)*(1.0-clouds)*(1.0-shadow*0.8)*1.6*step(0.0,ndl);
+        float spec = pow(max(dot(N,H),0.0), 70.0)*(1.0-smoothstep(0.0,0.1,land))*(1.0-clouds)*(1.0-shadow*0.8)*1.6*step(0.0,ndl);
         float cloudLit = mix(1.0, 0.42, smoothstep(0.25, 0.9, self));
         vec3 cloudCol = vec3(0.92,0.94,0.97)*(max(ndl,0.0)*1.6*cloudLit + 0.012);
-        cloudCol *= mix(vec3(1.0), vec3(1.0,0.6,0.35), smoothstep(0.35, 0.0, ndl)*step(0.0, ndl)); // nuages rosés au terminateur
+        cloudCol *= mix(vec3(1.0), vec3(1.0,0.6,0.35), smoothstep(0.35, 0.0, ndl)*step(0.0, ndl));
         vec3 surf = mix(lit + vec3(1.0,0.9,0.75)*spec, cloudCol, clouds);
-        // lumières des villes
-        float city = pow(smoothstep(0.6,0.95, snoise(p*90.0)*0.5+0.5), 2.0) * smoothstep(0.6,0.85, snoise(p*9.0+3.0)*0.5+0.5) * land*(1.0-ice)*smoothstep(0.05,0.12,h);
+        float city = texture2D(tCloud, vUv).g;
         surf += vec3(1.0,0.62,0.28)*city*(1.0-day)*(1.0-clouds*0.85)*0.9;
         // orages : éclairs dans les nuages du côté nuit
-        vec3 cell = floor(cp*55.0); vec3 fc = fract(cp*55.0) - 0.5;
+        vec3 cp = vObj * 55.0; vec3 cell = floor(cp); vec3 fc = fract(cp) - 0.5;
         float hsh = fract(sin(dot(cell, vec3(12.9898,78.233,37.719)) + floor(time*6.0)*7.13)*43758.5453);
-        float bolt = step(0.9965, hsh) * smoothstep(0.5, 0.0, length(fc)) * clouds * (1.0-day);
-        surf += vec3(0.65,0.75,1.0) * bolt * 3.0;
+        surf += vec3(0.65,0.75,1.0) * step(0.9965, hsh) * smoothstep(0.5, 0.0, length(fc)) * clouds * (1.0-day) * 3.0;
         gl_FragColor = vec4(surf, 1.0);
       }`,
   });
@@ -188,8 +218,8 @@ function buildPlanet() {
     fragmentShader: `
       uniform vec3 sunDir; uniform vec3 pCenter; uniform float pRadius; uniform float intensity;
       varying vec3 vWorld;
-      #define IS 14
-      #define JS 6
+      #define IS 10
+      #define JS 4
       const float RP = 1.0, RA = ${ATMO_TOP.toFixed(3)};
       const float HR = 0.0045, HM = 0.0012;
       const vec3 KR = vec3(18.5, 43.9, 75.6);
